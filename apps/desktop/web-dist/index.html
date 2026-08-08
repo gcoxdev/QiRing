@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QiRing</title>
+    <style>
+      :root {
+        --bg: #0e141b;
+        --panel: #1b2530;
+        --ink: #edf4fa;
+        --muted: #9bb0c4;
+        --line: #324251;
+        --accent: #ff9f1c;
+        --danger: #c74646;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background:
+          radial-gradient(900px 450px at 100% 0%, #30465b60, transparent 60%),
+          radial-gradient(650px 450px at 0% 100%, #5a3b2038, transparent 60%),
+          var(--bg);
+        color: var(--ink);
+      }
+      .app { max-width: 1260px; margin: 0 auto; padding: 18px; }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .title { margin: 0; letter-spacing: 0.04em; }
+      .status {
+        margin: 0 0 12px;
+        padding: 8px 10px;
+        border: 1px solid #2f455b;
+        border-radius: 8px;
+        background: #203043;
+        color: #cfe0ee;
+        min-height: 22px;
+      }
+      .status.error {
+        background: #3d2323;
+        border-color: #6a3b3b;
+        color: #ffd8d8;
+      }
+      .panel {
+        background: linear-gradient(180deg, #202c39, var(--panel));
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .hidden { display: none !important; }
+      .menu-wrap { position: relative; }
+      .menu-dropdown {
+        position: absolute;
+        top: 40px;
+        right: 0;
+        min-width: 280px;
+        z-index: 20;
+      }
+      .menu-group { border-top: 1px solid #33485d; padding-top: 8px; margin-top: 8px; }
+      .menu-title { font-size: 0.82rem; color: var(--muted); margin-bottom: 6px; }
+      .menu-btn { width: 100%; margin-top: 6px; text-align: left; }
+      .auth {
+        max-width: 460px;
+        margin: 0 auto;
+      }
+      label { font-size: 0.85rem; color: var(--muted); display: block; margin-top: 8px; }
+      input, textarea, select {
+        width: 100%;
+        margin-top: 4px;
+        padding: 8px 9px;
+        border: 1px solid #405364;
+        border-radius: 8px;
+        background: #121a22;
+        color: var(--ink);
+      }
+      textarea { min-height: 92px; }
+      button {
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 11px;
+        cursor: pointer;
+        background: var(--accent);
+        color: #221300;
+        font-weight: 700;
+      }
+      button.secondary { background: #2a3c4f; color: #d5e4f2; }
+      button.danger { background: var(--danger); color: #fff; }
+      button.ghost { background: #213042; color: #cfe0ee; }
+      .workspace { display: grid; gap: 12px; }
+      .workspace.view-vertical-1,
+      .workspace.view-vertical-2 { grid-template-columns: 1fr; }
+      .workspace.view-horizontal-1,
+      .workspace.view-horizontal-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .workspace.view-compact { grid-template-columns: 1fr; }
+      .pane {
+        min-height: 620px;
+        height: 620px;
+        overflow: auto;
+      }
+      .ring { order: 1; }
+      .qi { order: 2; }
+      .view-vertical-2 .qi,
+      .view-horizontal-1 .qi,
+      .view-compact .qi { order: 1; }
+      .view-vertical-2 .ring,
+      .view-horizontal-1 .ring,
+      .view-compact .ring { order: 2; }
+      .compact-switch {
+        display: none;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .view-compact .compact-switch { display: flex; }
+      .view-compact .ring,
+      .view-compact .qi { display: none; }
+      .view-compact.show-ring .ring,
+      .view-compact.show-qi .qi { display: block; }
+      .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+      .tab-btn.active,
+      .compact-btn.active { outline: 2px solid #ffb54d; }
+      .tab-pane { display: none; }
+      .tab-pane.active { display: block; }
+      .ring-search {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      details.category { margin-bottom: 8px; border: 1px solid #3b4f63; border-radius: 8px; padding: 6px; background: #16212b; }
+      details.category > summary { cursor: pointer; font-weight: 700; }
+      .qi-link {
+        display: block;
+        width: 100%;
+        text-align: left;
+        background: #223242;
+        color: #e4eef7;
+        border: 1px solid #3c5165;
+        margin-top: 6px;
+      }
+      .qi-link.active { outline: 2px solid #ffb54d; }
+      .inline-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+      .grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .question-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr auto auto;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .profile-item {
+        border: 1px solid #3a4f63;
+        border-radius: 8px;
+        background: #16202a;
+        padding: 8px;
+        margin-top: 8px;
+      }
+      .small { color: var(--muted); font-size: 0.82rem; }
+      @media (max-width: 1080px) {
+        .workspace.view-horizontal-1,
+        .workspace.view-horizontal-2,
+        .grid-two { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <section class="topbar">
+        <h1 class="title">QiRing</h1>
+        <div class="menu-wrap">
+          <button class="secondary" id="menuBtn">Menu</button>
+          <div id="menuPanel" class="menu-dropdown panel hidden">
+            <button class="menu-btn secondary" id="menuOpenQiRing">Open QiRing</button>
+            <button class="menu-btn secondary" id="menuOpenProfiles">Manage Password Profiles</button>
+            <div class="menu-group">
+              <div class="menu-title">View Mode</div>
+              <button class="menu-btn ghost" data-view="vertical-1">Vertical 1 (Ring above Qi)</button>
+              <button class="menu-btn ghost" data-view="vertical-2">Vertical 2 (Qi above Ring)</button>
+              <button class="menu-btn ghost" data-view="horizontal-1">Horizontal 1 (Qi left, Ring right)</button>
+              <button class="menu-btn ghost" data-view="horizontal-2">Horizontal 2 (Ring left, Qi right)</button>
+              <button class="menu-btn ghost" data-view="compact">Compact (Qi/Ring tabs)</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div id="status" class="status">Ready</div>
+
+      <section id="createScreen" class="auth panel hidden">
+        <h3>Create Vault</h3>
+        <label>Master Password<input id="createMaster" type="password" placeholder="At least 12 characters" /></label>
+        <button id="createBtn">Create Vault</button>
+        <p id="recoveryText" class="small"></p>
+      </section>
+
+      <section id="unlockScreen" class="auth panel hidden">
+        <h3>Unlock Vault</h3>
+        <label>Master Password<input id="unlockMaster" type="password" placeholder="Existing password" /></label>
+        <button id="unlockBtn">Unlock</button>
+      </section>
+
+      <section id="workspace" class="workspace view-horizontal-2 show-ring hidden">
+        <div class="compact-switch">
+          <button id="compactQiBtn" class="compact-btn secondary">Qi</button>
+          <button id="compactRingBtn" class="compact-btn secondary active">Ring</button>
+        </div>
+
+        <article class="pane panel ring" id="ringPane">
+          <h2>Ring</h2>
+          <div class="ring-search">
+            <input id="searchInput" type="text" placeholder="Search Qi" />
+            <button class="ghost" id="clearSearchBtn">X</button>
+          </div>
+          <div id="ringList"></div>
+        </article>
+
+        <article class="pane panel qi" id="qiPane">
+          <h2>Qi</h2>
+          <div class="tabs">
+            <button class="tab-btn active secondary" data-tab="info">Info</button>
+            <button class="tab-btn secondary" data-tab="key">Key</button>
+            <button class="tab-btn secondary" data-tab="questions">Questions</button>
+          </div>
+
+          <section class="tab-pane active" id="tab-info">
+            <label>Category
+              <input id="qiCategory" list="categoryList" placeholder="Choose or type a new category" />
+              <datalist id="categoryList"></datalist>
+            </label>
+            <label>Qi Name<input id="qiName" type="text" placeholder="Entry title" /></label>
+            <label>Tags<input id="qiTags" type="text" placeholder="tag1,tag2" /></label>
+            <label>URL<input id="qiUrl" type="url" placeholder="https://..." /></label>
+            <div class="inline-actions">
+              <button id="openUrlBtn">Open URL</button>
+            </div>
+          </section>
+
+          <section class="tab-pane" id="tab-key">
+            <label>Username<input id="qiUsername" type="text" /></label>
+            <div class="inline-actions"><button class="secondary" id="copyUsernameBtn">Copy Username</button></div>
+
+            <label>Password<input id="qiPassword" type="password" /></label>
+            <div class="inline-actions">
+              <button class="secondary" id="copyPasswordBtn">Copy Password</button>
+              <button class="secondary" id="togglePasswordBtn">Show</button>
+              <select id="profileSelect"></select>
+              <button id="genFromProfileBtn">Generate</button>
+            </div>
+
+            <label>Notes<textarea id="qiNotes" placeholder="General notes"></textarea></label>
+          </section>
+
+          <section class="tab-pane" id="tab-questions">
+            <div id="questionRows"></div>
+            <div class="inline-actions"><button id="addQuestionBtn">Add Question</button></div>
+          </section>
+
+          <div class="inline-actions">
+            <button id="newQiBtn">New Qi</button>
+            <button id="saveQiBtn">Save Qi</button>
+            <button class="danger" id="deleteQiBtn">Delete Qi</button>
+            <button class="secondary" id="lockBtn">Lock Vault</button>
+          </div>
+        </article>
+      </section>
+
+      <section id="profilesScreen" class="panel hidden">
+        <h2>Password Profiles</h2>
+        <p class="small">Profiles are used from Qi > Key tab password generation.</p>
+
+        <div class="grid-two">
+          <label>Profile<select id="profilesList"></select></label>
+          <label>Profile Name<input id="profileName" type="text" /></label>
+        </div>
+
+        <div class="grid-two">
+          <label>Length<input id="profileLength" type="number" min="8" value="20" /></label>
+          <div></div>
+        </div>
+
+        <div class="grid-two">
+          <label><input id="profileUpper" type="checkbox" checked /> Include upper</label>
+          <label><input id="profileLower" type="checkbox" checked /> Include lower</label>
+        </div>
+        <div class="grid-two">
+          <label><input id="profileNumbers" type="checkbox" checked /> Include numbers</label>
+          <label><input id="profileSymbols" type="checkbox" checked /> Include symbols</label>
+        </div>
+
+        <div class="inline-actions">
+          <button id="newProfileBtn">New Profile</button>
+          <button id="saveProfileBtn">Save Profile</button>
+          <button class="danger" id="deleteProfileBtn">Delete Profile</button>
+        </div>
+
+        <div id="profilesSummary"></div>
+      </section>
+    </main>
+
+    <script>
+      const NOTES_PREFIX = "QIRING_META_V1:";
+      const PROFILE_KEY = "qiring.passwordProfiles";
+
+      const state = {
+        selectedId: null,
+        items: [],
+        search: "",
+        activeTab: "info",
+        view: "horizontal-2",
+        compactPane: "ring",
+        clipboardSeconds: 30,
+        profiles: [],
+        selectedProfileId: null
+      };
+
+      const statusEl = document.getElementById("status");
+      const createScreenEl = document.getElementById("createScreen");
+      const unlockScreenEl = document.getElementById("unlockScreen");
+      const workspaceEl = document.getElementById("workspace");
+      const profilesScreenEl = document.getElementById("profilesScreen");
+      const ringListEl = document.getElementById("ringList");
+      const categoryListEl = document.getElementById("categoryList");
+      const questionRowsEl = document.getElementById("questionRows");
+      const menuPanelEl = document.getElementById("menuPanel");
+
+      function setStatus(message, error = false) {
+        statusEl.textContent = message;
+        statusEl.className = `status${error ? " error" : ""}`;
+      }
+
+      function invoke(command, args = {}) {
+        if (!window.__TAURI__?.core?.invoke) throw new Error("Tauri bridge unavailable");
+        return window.__TAURI__.core.invoke(command, args);
+      }
+
+      function parseTags(raw) {
+        return String(raw || "").split(",").map((x) => x.trim()).filter(Boolean);
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function encodeNotesPayload(notes, questions) {
+        return `${NOTES_PREFIX}${JSON.stringify({ notes: notes || "", questions: questions || [] })}`;
+      }
+
+      function decodeNotesPayload(raw) {
+        if (!raw) return { notes: "", questions: [] };
+        if (!String(raw).startsWith(NOTES_PREFIX)) return { notes: String(raw), questions: [] };
+        try {
+          const parsed = JSON.parse(String(raw).slice(NOTES_PREFIX.length));
+          return {
+            notes: parsed.notes || "",
+            questions: Array.isArray(parsed.questions) ? parsed.questions : []
+          };
+        } catch (_) {
+          return { notes: String(raw), questions: [] };
+        }
+      }
+
+      function setScreen(name) {
+        createScreenEl.classList.toggle("hidden", name !== "create");
+        unlockScreenEl.classList.toggle("hidden", name !== "unlock");
+        workspaceEl.classList.toggle("hidden", name !== "qiring");
+        profilesScreenEl.classList.toggle("hidden", name !== "profiles");
+      }
+
+      function updateViewMode() {
+        workspaceEl.className = `workspace view-${state.view} show-${state.compactPane}`;
+        document.querySelectorAll(".compact-btn").forEach((el) => el.classList.remove("active"));
+        if (state.compactPane === "qi") document.getElementById("compactQiBtn").classList.add("active");
+        if (state.compactPane === "ring") document.getElementById("compactRingBtn").classList.add("active");
+      }
+
+      function setActiveTab(tab) {
+        state.activeTab = tab;
+        document.querySelectorAll(".tab-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === tab));
+        document.querySelectorAll(".tab-pane").forEach((pane) => pane.classList.toggle("active", pane.id === `tab-${tab}`));
+      }
+
+      function addQuestionRow(question = "", answer = "") {
+        const row = document.createElement("div");
+        row.className = "question-row";
+        row.innerHTML = `
+          <input class="q-question" type="text" placeholder="Question" value="${escapeHtml(question)}" />
+          <input class="q-answer" type="text" placeholder="Answer" value="${escapeHtml(answer)}" />
+          <button class="secondary q-copy">Copy</button>
+          <button class="danger q-remove">Remove</button>
+        `;
+        questionRowsEl.appendChild(row);
+      }
+
+      function collectQuestions() {
+        return Array.from(questionRowsEl.querySelectorAll(".question-row"))
+          .map((row) => ({
+            question: row.querySelector(".q-question").value.trim(),
+            answer: row.querySelector(".q-answer").value
+          }))
+          .filter((qa) => qa.question || qa.answer);
+      }
+
+      function clearQiForm() {
+        state.selectedId = null;
+        document.getElementById("qiCategory").value = "";
+        document.getElementById("qiName").value = "";
+        document.getElementById("qiTags").value = "";
+        document.getElementById("qiUrl").value = "";
+        document.getElementById("qiUsername").value = "";
+        document.getElementById("qiPassword").value = "";
+        document.getElementById("qiNotes").value = "";
+        questionRowsEl.innerHTML = "";
+        renderRing();
+      }
+
+      async function copyWithTimeout(value) {
+        if (!value) throw new Error("No value to copy");
+        await navigator.clipboard.writeText(value);
+        const ms = Math.max(1, Number(state.clipboardSeconds || 30)) * 1000;
+        setTimeout(async () => {
+          try { await navigator.clipboard.writeText(""); } catch (_) {}
+        }, ms);
+      }
+
+      async function loadSecurityStatus() {
+        try {
+          const sec = await invoke("get_security_status");
+          state.clipboardSeconds = sec.clipboard_clear_seconds || 30;
+        } catch (_) {
+          state.clipboardSeconds = 30;
+        }
+      }
+
+      async function refreshItems() {
+        state.items = await invoke("list_items", { filter: { query: state.search || null } });
+        renderRing();
+        renderCategoryList();
+      }
+
+      function renderCategoryList() {
+        const categories = new Set();
+        state.items.forEach((item) => { if (item.folder) categories.add(item.folder); });
+        categoryListEl.innerHTML = Array.from(categories)
+          .sort((a, b) => a.localeCompare(b))
+          .map((c) => `<option value="${escapeHtml(c)}"></option>`)
+          .join("");
+      }
+
+      function renderRing() {
+        const grouped = new Map();
+        state.items.forEach((item) => {
+          const cat = item.folder || "Uncategorized";
+          if (!grouped.has(cat)) grouped.set(cat, []);
+          grouped.get(cat).push(item);
+        });
+
+        const categories = Array.from(grouped.keys()).sort((a, b) => a.localeCompare(b));
+        if (!categories.length) {
+          ringListEl.innerHTML = '<p class="small">No Qi entries yet.</p>';
+          return;
+        }
+
+        ringListEl.innerHTML = categories
+          .map((cat) => {
+            const items = grouped.get(cat).sort((a, b) => a.title.localeCompare(b.title));
+            return `
+              <details class="category" open>
+                <summary>${escapeHtml(cat)}</summary>
+                ${items
+                  .map((item) => {
+                    const activeClass = item.id === state.selectedId ? "active" : "";
+                    return `<button class="qi-link ${activeClass}" data-select-id="${item.id}">${escapeHtml(item.title)}</button>`;
+                  })
+                  .join("")}
+              </details>
+            `;
+          })
+          .join("");
+      }
+
+      async function selectQi(id) {
+        const item = await invoke("get_item", { itemId: id });
+        state.selectedId = id;
+        const decoded = decodeNotesPayload(item.notes);
+        document.getElementById("qiCategory").value = item.folder || "";
+        document.getElementById("qiName").value = item.title || "";
+        document.getElementById("qiTags").value = (item.tags || []).join(",");
+        document.getElementById("qiUrl").value = item.url || "";
+        document.getElementById("qiUsername").value = item.username || "";
+        document.getElementById("qiPassword").value = item.password || "";
+        document.getElementById("qiNotes").value = decoded.notes || "";
+        questionRowsEl.innerHTML = "";
+        (decoded.questions || []).forEach((qa) => addQuestionRow(qa.question || "", qa.answer || ""));
+        renderRing();
+      }
+
+      function loadProfiles() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(PROFILE_KEY) || "[]");
+          state.profiles = Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+          state.profiles = [];
+        }
+
+        if (!state.profiles.length) {
+          state.profiles = [{
+            id: crypto.randomUUID(),
+            name: "Strong 20",
+            length: 20,
+            include_upper: true,
+            include_lower: true,
+            include_numbers: true,
+            include_symbols: true
+          }];
+          localStorage.setItem(PROFILE_KEY, JSON.stringify(state.profiles));
+        }
+
+        state.selectedProfileId = state.profiles[0]?.id || null;
+        renderProfiles();
+      }
+
+      function persistProfiles() {
+        localStorage.setItem(PROFILE_KEY, JSON.stringify(state.profiles));
+      }
+
+      function renderProfiles() {
+        const qiSelect = document.getElementById("profileSelect");
+        const screenSelect = document.getElementById("profilesList");
+        const options = state.profiles.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
+        qiSelect.innerHTML = options;
+        screenSelect.innerHTML = options;
+        if (state.selectedProfileId) {
+          qiSelect.value = state.selectedProfileId;
+          screenSelect.value = state.selectedProfileId;
+          fillProfileForm();
+        }
+        document.getElementById("profilesSummary").innerHTML = state.profiles
+          .map((p) => `<div class="profile-item">${escapeHtml(p.name)} - length ${p.length}</div>`)
+          .join("");
+      }
+
+      function currentProfile() {
+        return state.profiles.find((p) => p.id === state.selectedProfileId) || null;
+      }
+
+      function fillProfileForm() {
+        const profile = currentProfile();
+        if (!profile) return;
+        document.getElementById("profileName").value = profile.name;
+        document.getElementById("profileLength").value = profile.length;
+        document.getElementById("profileUpper").checked = !!profile.include_upper;
+        document.getElementById("profileLower").checked = !!profile.include_lower;
+        document.getElementById("profileNumbers").checked = !!profile.include_numbers;
+        document.getElementById("profileSymbols").checked = !!profile.include_symbols;
+      }
+
+      function profileFromForm() {
+        return {
+          name: document.getElementById("profileName").value.trim(),
+          length: Number(document.getElementById("profileLength").value || 20),
+          include_upper: document.getElementById("profileUpper").checked,
+          include_lower: document.getElementById("profileLower").checked,
+          include_numbers: document.getElementById("profileNumbers").checked,
+          include_symbols: document.getElementById("profileSymbols").checked
+        };
+      }
+
+      async function saveQi() {
+        const title = document.getElementById("qiName").value.trim();
+        if (!title) throw new Error("Qi Name is required");
+
+        const category = document.getElementById("qiCategory").value.trim();
+        const tags = parseTags(document.getElementById("qiTags").value);
+        const url = document.getElementById("qiUrl").value.trim();
+        const username = document.getElementById("qiUsername").value;
+        const password = document.getElementById("qiPassword").value;
+        const notes = document.getElementById("qiNotes").value;
+        const encodedNotes = encodeNotesPayload(notes, collectQuestions());
+
+        if (state.selectedId) {
+          await invoke("update_item", {
+            itemId: state.selectedId,
+            patch: {
+              title,
+              username: username || null,
+              password: password || null,
+              url: url || null,
+              notes: encodedNotes,
+              tags,
+              folder: category || null
+            }
+          });
+        } else {
+          const newId = await invoke("add_item", {
+            input: {
+              item_type: "login",
+              title,
+              username: username || null,
+              password: password || null,
+              url: url || null,
+              notes: encodedNotes,
+              tags,
+              folder: category || null
+            }
+          });
+          state.selectedId = newId;
+        }
+
+        await refreshItems();
+        setStatus("Qi saved.");
+      }
+
+      async function deleteQi() {
+        if (!state.selectedId) throw new Error("No Qi selected");
+        const confirmed = window.confirm("Delete this Qi permanently?");
+        if (!confirmed) return;
+        await invoke("delete_item", { itemId: state.selectedId });
+        clearQiForm();
+        await refreshItems();
+        setStatus("Qi deleted.");
+      }
+
+      document.getElementById("menuBtn").addEventListener("click", () => {
+        menuPanelEl.classList.toggle("hidden");
+      });
+
+      document.getElementById("menuOpenQiRing").addEventListener("click", () => {
+        setScreen("qiring");
+        menuPanelEl.classList.add("hidden");
+      });
+
+      document.getElementById("menuOpenProfiles").addEventListener("click", () => {
+        setScreen("profiles");
+        menuPanelEl.classList.add("hidden");
+      });
+
+      document.querySelectorAll("[data-view]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          state.view = btn.dataset.view;
+          updateViewMode();
+          setScreen("qiring");
+          menuPanelEl.classList.add("hidden");
+        });
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!event.target.closest(".menu-wrap")) menuPanelEl.classList.add("hidden");
+      });
+
+      document.getElementById("compactQiBtn" ).addEventListener("click", () => {
+        state.compactPane = "qi";
+        updateViewMode();
+      });
+
+      document.getElementById("compactRingBtn").addEventListener("click", () => {
+        state.compactPane = "ring";
+        updateViewMode();
+      });
+
+      document.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
+      });
+
+      document.getElementById("createBtn").addEventListener("click", async () => {
+        try {
+          const masterPassword = document.getElementById("createMaster").value;
+          const result = await invoke("create_vault", {
+            masterPassword,
+            settings: {
+              auto_lock_minutes: 5,
+              clipboard_clear_seconds: 30,
+              biometric_enabled: true,
+              theme: "system",
+              backup_preferences: { include_settings: true }
+            }
+          });
+          document.getElementById("recoveryText").textContent = `Recovery key: ${result.recovery.recovery_key}`;
+          setScreen("unlock");
+          setStatus("Vault created. Now unlock it.");
+        } catch (err) {
+          setStatus(`Create failed: ${err}`, true);
+        }
+      });
+
+      document.getElementById("unlockBtn").addEventListener("click", async () => {
+        try {
+          const masterPassword = document.getElementById("unlockMaster").value;
+          await invoke("unlock_vault_master", { masterPassword });
+          await Promise.all([loadSecurityStatus(), refreshItems()]);
+          setScreen("qiring");
+          updateViewMode();
+          setStatus("Vault unlocked.");
+        } catch (err) {
+          setStatus(`Unlock failed: ${err}`, true);
+        }
+      });
+
+      document.getElementById("lockBtn").addEventListener("click", async () => {
+        try {
+          await invoke("lock_vault");
+          clearQiForm();
+          ringListEl.innerHTML = "";
+          setScreen("unlock");
+          setStatus("Vault locked.");
+        } catch (err) {
+          setStatus(`Lock failed: ${err}`, true);
+        }
+      });
+
+      document.getElementById("searchInput").addEventListener("input", async (e) => {
+        state.search = e.target.value.trim();
+        await refreshItems();
+      });
+
+      document.getElementById("clearSearchBtn").addEventListener("click", async () => {
+        document.getElementById("searchInput").value = "";
+        state.search = "";
+        await refreshItems();
+      });
+
+      ringListEl.addEventListener("click", async (event) => {
+        const btn = event.target.closest("[data-select-id]");
+        if (!btn) return;
+        try {
+          await selectQi(btn.dataset.selectId);
+          setStatus("Qi loaded.");
+        } catch (err) {
+          setStatus(`Load failed: ${err}`, true);
+        }
+      });
+
+      document.getElementById("newQiBtn").addEventListener("click", () => {
+        clearQiForm();
+        setActiveTab("info");
+        setStatus("New Qi form ready.");
+      });
+
+      document.getElementById("saveQiBtn").addEventListener("click", async () => {
+        try {
+          await saveQi();
+        } catch (err) {
+          setStatus(`Save failed: ${err}`, true);
+        }
+      });
+
+      document.getElementById("deleteQiBtn").addEventListener("click", async () => {
+        try {
+          await deleteQi();
+        } catch (err) {
+          setStatus(`Delete failed: ${err}`, true);
+        }
+      });
+
+      document.getElementById("openUrlBtn").addEventListener("click", async () => {
+        try {
+          const url = document.getElementById("qiUrl").value.trim();
+          if (!url) throw new Error("URL is empty");
+          await invoke("open_url", { url });
+          setActiveTab("key");
+          setStatus("URL opened.");
+        } catch (err) {
+          setStatus(`Open URL failed: ${err}`, true);
+        }
+      });
+
+      document.getElementById("copyUsernameBtn").addEventListener("click", async () => {
+        try {
+          await copyWithTimeout(document.getElementById("qiUsername").value);
+          setStatus(`Username copied. Clipboard clears in ${state.clipboardSeconds}s.`);
+        } catch (err) {
+          setStatus(`Copy failed: ${err}`, true);
+        }
+      });
+
+      document.getElementById("copyPasswordBtn").addEventListener("click", async () => {
+        try {
+          await copyWithTimeout(document.getElementById("qiPassword").value);
+          setStatus(`Password copied. Clipboard clears in ${state.clipboardSeconds}s.`);
+        } catch (err) {
+          setStatus(`Copy failed: ${err}`, true);
+        }
+      });
+
+      document.getElementById("togglePasswordBtn").addEventListener("click", () => {
+        const input = document.getElementById("qiPassword");
+        const btn = document.getElementById("togglePasswordBtn");
+        const show = input.type === "password";
+        input.type = show ? "text" : "password";
+        btn.textContent = show ? "Hide" : "Show";
+      });
+
+      document.getElementById("profileSelect").addEventListener("change", (e) => {
+        state.selectedProfileId = e.target.value;
+        document.getElementById("profilesList").value = state.selectedProfileId;
+        fillProfileForm();
+      });
+
+      document.getElementById("genFromProfileBtn").addEventListener("click", async () => {
+        try {
+          const profile = currentProfile();
+          if (!profile) throw new Error("Select a profile");
+          const result = await invoke("generate_password", { policy: profile });
+          document.getElementById("qiPassword").value = result.value;
+          setStatus(`Password generated from profile '${profile.name}'.`);
+        } catch (err) {
+          setStatus(`Generate failed: ${err}`, true);
+        }
+      });
+
+      document.getElementById("addQuestionBtn").addEventListener("click", () => addQuestionRow());
+
+      questionRowsEl.addEventListener("click", async (event) => {
+        const row = event.target.closest(".question-row");
+        if (!row) return;
+        if (event.target.classList.contains("q-remove")) row.remove();
+        if (event.target.classList.contains("q-copy")) {
+          try {
+            await copyWithTimeout(row.querySelector(".q-answer").value);
+            setStatus(`Answer copied. Clipboard clears in ${state.clipboardSeconds}s.`);
+          } catch (err) {
+            setStatus(`Copy failed: ${err}`, true);
+          }
+        }
+      });
+
+      document.getElementById("profilesList").addEventListener("change", (e) => {
+        state.selectedProfileId = e.target.value;
+        document.getElementById("profileSelect").value = state.selectedProfileId;
+        fillProfileForm();
+      });
+
+      document.getElementById("newProfileBtn").addEventListener("click", () => {
+        state.selectedProfileId = null;
+        document.getElementById("profileName").value = "";
+        document.getElementById("profileLength").value = "20";
+        document.getElementById("profileUpper").checked = true;
+        document.getElementById("profileLower").checked = true;
+        document.getElementById("profileNumbers").checked = true;
+        document.getElementById("profileSymbols").checked = true;
+      });
+
+      document.getElementById("saveProfileBtn").addEventListener("click", () => {
+        try {
+          const profile = profileFromForm();
+          if (!profile.name) throw new Error("Profile name is required");
+          if (profile.length < 8) throw new Error("Length must be >= 8");
+          if (state.selectedProfileId) {
+            state.profiles = state.profiles.map((p) => (p.id === state.selectedProfileId ? { ...p, ...profile } : p));
+          } else {
+            const id = crypto.randomUUID();
+            state.selectedProfileId = id;
+            state.profiles.push({ id, ...profile });
+          }
+          persistProfiles();
+          renderProfiles();
+          setStatus("Profile saved.");
+        } catch (err) {
+          setStatus(`Profile save failed: ${err}`, true);
+        }
+      });
+
+      document.getElementById("deleteProfileBtn").addEventListener("click", () => {
+        try {
+          if (!state.selectedProfileId) throw new Error("No profile selected");
+          const confirmed = window.confirm("Delete this password profile?");
+          if (!confirmed) return;
+          state.profiles = state.profiles.filter((p) => p.id !== state.selectedProfileId);
+          state.selectedProfileId = state.profiles[0]?.id || null;
+          persistProfiles();
+          renderProfiles();
+          setStatus("Profile deleted.");
+        } catch (err) {
+          setStatus(`Profile delete failed: ${err}`, true);
+        }
+      });
+
+      async function bootstrap() {
+        try {
+          loadProfiles();
+          setActiveTab("info");
+          updateViewMode();
+
+          const exists = await invoke("vault_exists");
+          setScreen(exists ? "unlock" : "create");
+          setStatus(exists ? "Vault found. Unlock to continue." : "Create your vault to begin.");
+        } catch (err) {
+          setStatus(`Startup failed: ${err}`, true);
+          setScreen("create");
+        }
+      }
+
+      bootstrap();
+    </script>
+  </body>
+</html>
