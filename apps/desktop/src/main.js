@@ -30,7 +30,7 @@ const elements = Object.fromEntries(
     "masterTab", "recoveryTab", "masterUnlockPanel", "recoveryUnlockPanel", "unlockMaster",
     "recoveryKey", "recoveryMaster", "recoveryConfirm", "vaultShell", "brandHome", "viewTitle",
     "newAction", "saveAction", "deleteAction", "menuButton", "appMenu", "lockButton", "qiringView",
-    "profilesView", "healthView", "backupsView", "settingsView", "itemCount", "ringSortMode", "expandCategories", "collapseCategories", "searchInput",
+    "profilesView", "healthView", "backupsView", "settingsView", "helpView", "itemCount", "ringSortMode", "expandCategories", "collapseCategories", "searchInput", "tagFilter",
     "clearSearch", "itemList", "itemEditorTitle", "dirtyIndicator", "itemForm", "itemTitle", "itemType",
     "itemFolder", "categoryOptions", "itemTags", "itemIconPreview", "itemIconPlaceholder", "uploadItemIcon", "fetchItemFavicon", "removeItemIcon", "credentialFields", "itemUrl", "openUrlButton",
     "itemUsername", "copyUsername", "itemPassword", "togglePassword", "copyPassword", "profileSelect",
@@ -45,7 +45,8 @@ const elements = Object.fromEntries(
     "automaticBackups", "includeSettings", "backupRetention", "backupDirectory", "chooseBackupDirectory",
     "oldMasterPassword", "newMasterPassword", "rotateMaster", "recoveryMasterPassword", "regenerateRecovery",
     "recoveryDialog", "recoveryKeyOutput", "recoveryFingerprint", "copyRecoveryKey", "saveRecoveryKey", "printRecoveryKey", "recoveryVerify", "recoveryAcknowledged",
-    "finishRecovery", "unsavedDialog", "unsavedDialogMessage", "stayOnPage", "discardAndContinue", "saveAndContinue", "toastRegion"
+    "finishRecovery", "unsavedDialog", "unsavedDialogMessage", "stayOnPage", "discardAndContinue", "saveAndContinue",
+    "confirmationDialog", "confirmationDialogTitle", "confirmationDialogMessage", "cancelConfirmation", "confirmAction", "toastRegion"
   ].map((id) => [id, byId(id)])
 );
 
@@ -56,7 +57,8 @@ const views = {
   profiles: elements.profilesView,
   health: elements.healthView,
   backups: elements.backupsView,
-  settings: elements.settingsView
+  settings: elements.settingsView,
+  help: elements.helpView
 };
 
 const viewLabels = {
@@ -64,12 +66,14 @@ const viewLabels = {
   profiles: "Password Profiles",
   health: "Vault Health",
   backups: "Encrypted Backups",
-  settings: "Settings"
+  settings: "Settings",
+  help: "Help"
 };
 
 const state = {
   view: "qiring",
   items: [],
+  catalogItems: [],
   profiles: [],
   selectedItemId: null,
   selectedProfileId: null,
@@ -91,6 +95,7 @@ const state = {
   draggedOrder: null,
   itemIconDataUrl: null,
   unsavedDecisionResolver: null,
+  confirmationResolver: null,
   unlocked: false
 };
 
@@ -298,6 +303,7 @@ async function enterVault() {
   }
   state.profiles = profiles;
   state.items = items;
+  state.catalogItems = items;
   fillSettings(settings);
   state.unlocked = true;
   setHidden(elements.authShell, true);
@@ -308,7 +314,7 @@ async function enterVault() {
   if (state.profiles[0]) selectProfile(state.profiles[0].id, { force: true });
   renderItems();
   newItem({ force: true });
-  await navigate("qiring", { force: true });
+  await navigate("qiring", { force: true, focusHeading: false });
 }
 
 function hasUnsavedChanges() {
@@ -330,6 +336,25 @@ function settleUnsavedDecision(decision) {
   state.unsavedDecisionResolver = null;
   elements.unsavedDialog.close();
   resolve(decision);
+}
+
+function askConfirmation({ title, message, confirmLabel }) {
+  elements.confirmationDialogTitle.textContent = title;
+  elements.confirmationDialogMessage.textContent = message;
+  setButtonLabel(elements.confirmAction, confirmLabel);
+  elements.confirmationDialog.showModal();
+  elements.cancelConfirmation.focus();
+  return new Promise((resolve) => {
+    state.confirmationResolver = resolve;
+  });
+}
+
+function settleConfirmation(confirmed) {
+  const resolve = state.confirmationResolver;
+  if (!resolve) return;
+  state.confirmationResolver = null;
+  elements.confirmationDialog.close();
+  resolve(confirmed);
 }
 
 async function saveCurrentView() {
@@ -359,7 +384,7 @@ async function resolveUnsavedLock() {
   return Boolean(saved) && !hasUnsavedChanges();
 }
 
-async function navigate(view, { force = false } = {}) {
+async function navigate(view, { force = false, focusHeading = true } = {}) {
   if (!views[view]) return;
   if (!force && view === state.view) {
     closeMenu();
@@ -382,7 +407,7 @@ async function navigate(view, { force = false } = {}) {
   });
   configureContextActions();
   closeMenu();
-  elements.viewTitle.focus({ preventScroll: true });
+  if (focusHeading) elements.viewTitle.focus({ preventScroll: true });
   if (view === "health") await runHealthAnalysis();
   if (view === "backups") await refreshSnapshots();
   if (view === "settings") await loadSettings();
@@ -394,7 +419,8 @@ function configureContextActions() {
     profiles: ["New Profile", "Save Profile", "Delete Profile"],
     settings: [null, "Save Settings", null],
     backups: [null, "Export Backup", null],
-    health: [null, null, null]
+    health: [null, null, null],
+    help: [null, null, null]
   }[state.view];
   [elements.newAction, elements.saveAction, elements.deleteAction].forEach((button, index) => {
     const label = config[index];
@@ -669,8 +695,25 @@ function attachDropTarget(target, kind, id, category = null) {
   });
 }
 
+function renderTagFilter() {
+  const selected = elements.tagFilter.value;
+  const tags = [...new Set(state.catalogItems.flatMap((item) => item.tags || []))]
+    .sort(compareText);
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "All tags";
+  elements.tagFilter.replaceChildren(all, ...tags.map((tag) => {
+    const option = document.createElement("option");
+    option.value = tag;
+    option.textContent = tag;
+    return option;
+  }));
+  elements.tagFilter.value = tags.includes(selected) ? selected : "";
+}
+
 function renderItems() {
   elements.itemList.replaceChildren();
+  renderTagFilter();
   elements.itemCount.textContent = String(state.items.length);
   renderRingSortControl();
   const categories = new Map();
@@ -679,20 +722,19 @@ function renderItems() {
     if (!categories.has(category)) categories.set(category, []);
     categories.get(category).push(item);
   }
-  const searching = Boolean(elements.searchInput.value.trim());
+  const filtering = Boolean(elements.searchInput.value.trim() || elements.tagFilter.value);
   const categoryNames = [...categories.keys()];
-  const customSortable = ringSortMode() === "custom" && !searching;
-  const expandedCount = categoryNames.filter((category) => state.expandedCategories.has(category)).length;
+  const customSortable = ringSortMode() === "custom" && !filtering;
+  elements.clearSearch.disabled = !filtering;
   elements.ringSortMode.disabled = categories.size === 0;
-  elements.expandCategories.disabled = categories.size === 0 || searching || expandedCount === categories.size;
-  elements.collapseCategories.disabled = categories.size === 0 || searching || expandedCount === 0;
+  updateCategoryActionState(categoryNames, filtering);
   for (const category of orderedCategoryNames(categoryNames)) {
     const items = categories.get(category);
     const group = createElement("details", {
       className: "category-group",
       attributes: { "data-category": category }
     });
-    group.open = searching || state.expandedCategories.has(category);
+    group.open = filtering || state.expandedCategories.has(category);
     const summary = createElement("summary", { className: "category-summary" });
     if (customSortable) {
       group.classList.add("sortable");
@@ -704,10 +746,16 @@ function renderItems() {
       attachDropTarget(group, "category", category);
     }
     summary.append(
-      createElement("span", { className: "category-chevron", text: "›", attributes: { "aria-hidden": "true" } }),
+      createElement("span", { className: "category-chevron", attributes: { "aria-hidden": "true" } }),
       createElement("strong", { text: category }),
       createElement("span", { className: "category-count", text: String(items.length), attributes: { "aria-label": `${items.length} entries` } })
     );
+    summary.addEventListener("click", (event) => {
+      if (event.defaultPrevented) return;
+      if (group.open) state.expandedCategories.delete(category);
+      else state.expandedCategories.add(category);
+      updateCategoryActionState(categoryNames, filtering);
+    });
     const entries = createElement("div", { className: "category-items" });
     for (const item of orderedItems(items)) {
       const row = createElement("div", { className: `category-item-row${customSortable ? " sortable" : ""}` });
@@ -737,22 +785,28 @@ function renderItems() {
       entries.append(row);
     }
     group.append(summary, entries);
-    group.addEventListener("toggle", (event) => {
-      if (!event.isTrusted) return;
-      if (group.open) state.expandedCategories.add(category);
-      else state.expandedCategories.delete(category);
-    });
     elements.itemList.append(group);
   }
   if (state.items.length === 0) {
-    elements.itemList.append(createElement("p", { className: "empty-message", text: "No Qi entries yet. Use New Qi to add a login or secure note." }));
+    elements.itemList.append(createElement("p", {
+      className: "empty-message",
+      text: filtering
+        ? "No Qi entries match the current search or tag filter."
+        : "No Qi entries yet. Use New Qi to add a login or secure note."
+    }));
   }
-  const folders = [...new Set(state.items.map((item) => item.folder).filter(Boolean))].sort();
+  const folders = [...new Set(state.catalogItems.map((item) => item.folder).filter(Boolean))].sort(compareText);
   elements.categoryOptions.replaceChildren(...folders.map((folder) => {
     const option = document.createElement("option");
     option.value = folder;
     return option;
   }));
+}
+
+function updateCategoryActionState(categoryNames, filtering) {
+  const expandedCount = categoryNames.filter((category) => state.expandedCategories.has(category)).length;
+  elements.expandCategories.disabled = categoryNames.length === 0 || filtering || expandedCount === categoryNames.length;
+  elements.collapseCategories.disabled = categoryNames.length === 0 || filtering || expandedCount === 0;
 }
 
 function setAllCategoriesExpanded(expanded) {
@@ -763,12 +817,18 @@ function setAllCategoriesExpanded(expanded) {
   renderItems();
 }
 
-async function refreshItems() {
+async function refreshItems({ refreshCatalog = false } = {}) {
   const request = ++state.searchSequence;
   const query = elements.searchInput.value.trim() || null;
-  const items = await vaultApi.listItems({ query, tag: null, folder: null, item_type: null });
+  const tag = elements.tagFilter.value || null;
+  const filteredRequest = vaultApi.listItems({ query, tag, folder: null, item_type: null });
+  const catalogRequest = refreshCatalog && (query || tag)
+    ? vaultApi.listItems({ query: null, tag: null, folder: null, item_type: null })
+    : Promise.resolve(null);
+  const [items, catalog] = await Promise.all([filteredRequest, catalogRequest]);
   if (request !== state.searchSequence) return;
   state.items = items;
+  if (refreshCatalog) state.catalogItems = catalog || items;
   renderItems();
 }
 
@@ -881,16 +941,16 @@ function addQuestionRow(question = { question: "", answer: "" }) {
   const row = createElement("div", { className: "question-row" });
   const questionInput = createElement("input", {
     className: "question-input",
-    attributes: { "aria-label": "Security question", maxlength: "4096", placeholder: "Question" }
+    attributes: { "aria-label": "Security question", maxlength: "4096", placeholder: "Question…" }
   });
   questionInput.value = question.question || "";
   const answerInput = createElement("input", {
     className: "answer-input",
     type: "password",
-    attributes: { "aria-label": "Security answer", maxlength: "4096", placeholder: "Answer", autocomplete: "off" }
+    attributes: { "aria-label": "Security answer", maxlength: "4096", placeholder: "Answer…", autocomplete: "off" }
   });
   answerInput.value = question.answer || "";
-  const copyButton = createElement("button", { className: "secondary", text: "Copy", type: "button", icon: "copy" });
+  const copyButton = createElement("button", { className: "secondary copy-question", text: "Copy", type: "button", icon: "copy" });
   copyButton.addEventListener("click", () => copySecret(answerInput.value, "Security answer"));
   const removeButton = createElement("button", { className: "danger remove-question", text: "Remove", type: "button", icon: "trash" });
   removeButton.addEventListener("click", () => {
@@ -958,7 +1018,7 @@ async function saveItem() {
     return vaultApi.addItem(input);
   });
   state.itemDirty = false;
-  await refreshItems();
+  await refreshItems({ refreshCatalog: true });
   await selectItem(id, { force: true });
   toast("Qi saved to the encrypted vault.");
   return true;
@@ -966,15 +1026,20 @@ async function saveItem() {
 
 async function deleteItem() {
   if (!state.selectedItemId) throw new Error("Select a Qi entry to delete.");
-  if (!window.confirm(`Delete “${elements.itemTitle.value}”? You can undo this deletion from the notification.`)) return;
+  const title = elements.itemTitle.value.trim() || "this Qi";
+  if (!await askConfirmation({
+    title: "Delete Qi?",
+    message: `Delete “${title}” from the vault? You can undo this deletion from the notification.`,
+    confirmLabel: "Delete Qi"
+  })) return;
   await busy(elements.deleteAction, () => vaultApi.deleteItem(state.selectedItemId));
   newItem({ force: true });
-  await refreshItems();
+  await refreshItems({ refreshCatalog: true });
   toast("Qi moved to encrypted deletion history.", {
     actionLabel: "Undo",
     action: async () => {
       const restoredId = await vaultApi.undoDelete();
-      await refreshItems();
+      await refreshItems({ refreshCatalog: true });
       await selectItem(restoredId, { force: true });
       toast("Deleted Qi restored.");
     }
@@ -1146,7 +1211,12 @@ async function saveProfile() {
 
 async function deleteProfile() {
   if (!state.selectedProfileId) throw new Error("Select a password profile to delete.");
-  if (!window.confirm(`Delete password profile “${elements.profileName.value}”?`)) return;
+  const name = elements.profileName.value.trim() || "this profile";
+  if (!await askConfirmation({
+    title: "Delete password profile?",
+    message: `Delete “${name}”? Qi that use this profile keep their existing passwords, but the generation policy cannot be recovered.`,
+    confirmLabel: "Delete Profile"
+  })) return;
   await busy(elements.deleteAction, () => vaultApi.deleteProfile(state.selectedProfileId));
   state.profiles = await vaultApi.listProfiles();
   const next = state.profiles[0]?.id;
@@ -1349,8 +1419,10 @@ async function refreshSnapshots() {
 }
 
 function resetSessionUi() {
+  if (elements.confirmationDialog.open) settleConfirmation(false);
   state.unlocked = false;
   state.items = [];
+  state.catalogItems = [];
   state.profiles = [];
   state.selectedItemId = null;
   state.selectedProfileId = null;
@@ -1362,6 +1434,10 @@ function resetSessionUi() {
   state.draggedOrder = null;
   state.selectedBackupToken = null;
   state.backupPreviewed = false;
+  elements.searchInput.value = "";
+  elements.tagFilter.value = "";
+  renderTagFilter();
+  elements.clearSearch.disabled = true;
   elements.toastRegion.replaceChildren();
   window.clearInterval(state.totpTimer);
   remaskPassword();
@@ -1478,6 +1554,12 @@ elements.unsavedDialog.addEventListener("cancel", (event) => {
 elements.stayOnPage.addEventListener("click", () => settleUnsavedDecision("stay"));
 elements.discardAndContinue.addEventListener("click", () => settleUnsavedDecision("discard"));
 elements.saveAndContinue.addEventListener("click", () => settleUnsavedDecision("save"));
+elements.cancelConfirmation.addEventListener("click", () => settleConfirmation(false));
+elements.confirmAction.addEventListener("click", () => settleConfirmation(true));
+elements.confirmationDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  settleConfirmation(false);
+});
 elements.copyRecoveryKey.addEventListener("click", runSafely(() => copySecret(elements.recoveryKeyOutput.textContent, "Recovery key")));
 elements.saveRecoveryKey.addEventListener("click", runSafely(saveRecoveryKey));
 elements.printRecoveryKey.addEventListener("click", () => window.print());
@@ -1513,11 +1595,13 @@ elements.uploadItemIcon.addEventListener("click", runSafely(uploadItemIcon));
 elements.fetchItemFavicon.addEventListener("click", runSafely(fetchItemFavicon));
 elements.removeItemIcon.addEventListener("click", () => setItemIcon(null, { dirty: true }));
 elements.searchInput.addEventListener("input", scheduleSearch);
+elements.tagFilter.addEventListener("change", runSafely(refreshItems));
 elements.ringSortMode.addEventListener("click", runSafely(cycleRingSortMode));
 elements.expandCategories.addEventListener("click", () => setAllCategoriesExpanded(true));
 elements.collapseCategories.addEventListener("click", () => setAllCategoriesExpanded(false));
 elements.clearSearch.addEventListener("click", runSafely(async () => {
   elements.searchInput.value = "";
+  elements.tagFilter.value = "";
   await refreshItems();
   elements.searchInput.focus();
 }));
@@ -1580,9 +1664,9 @@ document.addEventListener("keydown", runSafely(async (event) => {
     event.preventDefault();
     await navigate("qiring");
     elements.searchInput.focus();
-  } else if (/^[1-5]$/.test(event.key)) {
+  } else if (/^[1-6]$/.test(event.key)) {
     event.preventDefault();
-    await navigate(["qiring", "profiles", "health", "backups", "settings"][Number(event.key) - 1]);
+    await navigate(["qiring", "profiles", "health", "backups", "settings", "help"][Number(event.key) - 1]);
   }
 }));
 

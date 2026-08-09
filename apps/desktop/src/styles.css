@@ -216,7 +216,7 @@ textarea:disabled {
 
 .auth-panel > p:not(.section-code),
 .recovery-dialog p,
-.module-heading p,
+.module-intro p,
 .settings-section > p,
 .form-help {
   color: var(--muted);
@@ -462,6 +462,7 @@ button.danger {
 .header-location h1 {
   overflow: hidden;
   margin: 0;
+  color: var(--accent);
   font-size: 19px;
   line-height: 1.15;
   text-overflow: ellipsis;
@@ -566,6 +567,10 @@ kbd {
   grid-template-columns: clamp(210px, 27vw, 300px) minmax(0, 1fr);
 }
 
+#qiringView {
+  grid-template-columns: clamp(265px, 27vw, 300px) minmax(0, 1fr);
+}
+
 .master-pane,
 .detail-pane,
 .module-view {
@@ -583,7 +588,7 @@ kbd {
 .pane-heading,
 .detail-heading,
 .section-heading,
-.module-heading {
+.module-intro {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -600,14 +605,18 @@ kbd {
 .pane-heading h2,
 .detail-heading h2,
 .section-heading h3,
-.settings-section h3,
-.snapshot-section h3 {
+.settings-section :is(h2, h3),
+.snapshot-section :is(h2, h3) {
   margin: 1px 0 0;
 }
 
 .pane-heading h2,
 .detail-heading h2 {
   font-size: 18px;
+}
+
+.accent-heading {
+  color: var(--accent);
 }
 
 .count-badge,
@@ -707,6 +716,22 @@ kbd {
   min-height: var(--control-height);
 }
 
+.tag-filter {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.tag-filter label {
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .compact-button {
   height: var(--control-height);
   min-height: var(--control-height);
@@ -766,11 +791,23 @@ kbd {
 }
 
 .category-chevron {
+  display: grid;
+  width: 12px;
+  height: 12px;
+  place-items: center;
   color: var(--accent);
-  font-size: 18px;
-  line-height: 1;
   transform-origin: center;
   transition: transform 140ms ease;
+}
+
+.category-chevron::before {
+  width: 6px;
+  height: 6px;
+  box-sizing: border-box;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(-45deg);
 }
 
 .category-group[open] > .category-summary .category-chevron {
@@ -1029,8 +1066,8 @@ kbd {
 }
 
 .section-heading h3,
-.settings-section h3,
-.snapshot-section h3 {
+.settings-section :is(h2, h3),
+.snapshot-section :is(h2, h3) {
   font-size: 15px;
 }
 
@@ -1051,7 +1088,7 @@ kbd {
 
 .generator-strip {
   display: grid;
-  grid-template-columns: minmax(220px, 0.5fr) auto;
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: end;
   gap: 8px;
   margin: 10px 0;
@@ -1060,15 +1097,26 @@ kbd {
   padding: 8px;
 }
 
+.generator-strip > button {
+  width: max-content;
+  max-width: 100%;
+  justify-self: start;
+}
+
 .credential-grid {
   margin-top: 12px;
 }
 
+.totp-stack {
+  display: grid;
+  gap: 8px;
+}
+
 .totp-display {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
-  gap: 4px 8px;
+  gap: 6px 14px;
   border: 1px solid var(--line);
   background: var(--surface);
   padding: 8px;
@@ -1079,14 +1127,31 @@ kbd {
 }
 
 .totp-display strong {
+  grid-column: 1;
+  grid-row: 2 / span 2;
+  align-self: center;
+  width: max-content;
+  max-width: 100%;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 20px;
+  font-size: clamp(18px, 3vw, 22px);
+  font-variant-numeric: tabular-nums;
   letter-spacing: 0.14em;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 
 .totp-display small {
-  grid-column: 1 / -1;
+  grid-column: 2;
+  grid-row: 3;
   color: var(--muted);
+}
+
+.totp-display button {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: start;
+  min-width: 174px;
+  white-space: nowrap;
 }
 
 .question-list,
@@ -1099,6 +1164,10 @@ kbd {
   display: grid;
   grid-template-columns: minmax(150px, 0.8fr) minmax(190px, 1.2fr) auto auto;
   gap: 5px;
+}
+
+.question-row button {
+  white-space: nowrap;
 }
 
 .history-row {
@@ -1131,19 +1200,19 @@ kbd {
   padding: 20px clamp(18px, 3.5vw, 48px) 36px;
 }
 
-.module-heading {
-  align-items: end;
+.module-intro {
+  align-items: center;
   border-bottom: 1px solid var(--line-strong);
-  padding-bottom: 14px;
+  padding-bottom: 12px;
 }
 
-.module-heading h2 {
-  margin: 3px 0;
-  font-size: clamp(28px, 4vw, 42px);
-  letter-spacing: -0.04em;
+.module-intro > button {
+  min-width: 142px;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
-.module-heading p {
+.module-intro p {
   max-width: 720px;
   margin: 0;
 }
@@ -1178,7 +1247,10 @@ kbd {
 
 .issue-row {
   display: grid;
-  grid-template-columns: 90px minmax(160px, 0.4fr) minmax(260px, 1fr) auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(72px, 90px) minmax(100px, 0.4fr) minmax(0, 1fr) max-content;
   align-items: center;
   gap: 10px;
   border: 1px solid var(--line);
@@ -1194,8 +1266,20 @@ kbd {
 }
 
 .issue-row p {
+  min-width: 0;
   margin: 0;
   color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.issue-row > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.issue-row button {
+  min-width: 96px;
+  white-space: nowrap;
 }
 
 .settings-grid {
@@ -1212,8 +1296,65 @@ kbd {
   padding: 14px;
 }
 
-.settings-section h3 {
+.settings-section :is(h2, h3) {
   margin-bottom: 12px;
+}
+
+.help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.help-section {
+  min-width: 0;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  padding: 16px;
+}
+
+.help-section-wide {
+  grid-column: 1 / -1;
+}
+
+.help-section :is(h2, h3) {
+  margin: 0 0 9px;
+  font-size: 17px;
+}
+
+.help-section p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.help-section strong,
+.help-section kbd {
+  color: var(--text);
+}
+
+.help-definitions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+  margin: 0;
+}
+
+.help-definitions > div {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+.help-definitions dt {
+  font-weight: 650;
+}
+
+.help-definitions dd {
+  margin: 3px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .settings-section > .field,
@@ -1351,7 +1492,8 @@ kbd {
 }
 
 .recovery-dialog,
-.unsaved-dialog {
+.unsaved-dialog,
+.confirmation-dialog {
   width: min(650px, calc(100% - 40px));
   border: 1px solid var(--accent-strong);
   border-radius: 2px;
@@ -1363,7 +1505,8 @@ kbd {
 }
 
 .recovery-dialog::backdrop,
-.unsaved-dialog::backdrop {
+.unsaved-dialog::backdrop,
+.confirmation-dialog::backdrop {
   background: rgb(2 5 4 / 82%);
 }
 
@@ -1371,23 +1514,27 @@ kbd {
   padding: 24px;
 }
 
-.unsaved-dialog {
+.unsaved-dialog,
+.confirmation-dialog {
   width: min(470px, calc(100% - 40px));
   padding: 22px;
 }
 
-.unsaved-dialog h2 {
+.unsaved-dialog h2,
+.confirmation-dialog h2 {
   margin: 0;
   font-size: 24px;
 }
 
-.unsaved-dialog p {
+.unsaved-dialog p,
+.confirmation-dialog p {
   margin: 8px 0 20px;
   color: var(--muted);
   line-height: 1.5;
 }
 
-.unsaved-actions {
+.unsaved-actions,
+.confirmation-actions {
   display: flex;
   justify-content: flex-end;
   gap: 7px;
@@ -1514,6 +1661,20 @@ kbd {
     justify-content: flex-end;
   }
 
+  #qiringView .pane-heading {
+    display: flex;
+    gap: 10px;
+  }
+
+  #qiringView .pane-tools {
+    flex: 0 0 auto;
+    width: auto;
+  }
+
+  #qiringView .pane-tools button {
+    white-space: nowrap;
+  }
+
   .qi-icon-row {
     grid-template-columns: 42px minmax(0, 1fr);
   }
@@ -1532,8 +1693,37 @@ kbd {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .field-grid.two.credential-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .totp-display {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .totp-display > span,
+  .totp-display strong,
+  .totp-display button,
+  .totp-display small {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
   .question-row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
+  }
+
+  .question-row .question-input {
+    grid-column: 1 / -1;
+  }
+
+  .question-row .answer-input {
+    grid-column: 1;
+  }
+
+  .question-row .copy-question {
+    grid-column: 2;
   }
 
   .question-row .remove-question {
@@ -1542,6 +1732,10 @@ kbd {
 
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .help-definitions {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

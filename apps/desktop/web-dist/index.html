@@ -7,8 +7,8 @@
     <meta name="theme-color" content="#0a0e0d" />
     <link rel="icon" href="/assets/qiring-mark-n8nzoMEu.svg" type="image/svg+xml" />
     <title>QiRing</title>
-    <script type="module" crossorigin src="/assets/index-CDHywBef.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CMfMXaea.css">
+    <script type="module" crossorigin src="/assets/index-Dd1A1UpN.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-D8pN2-2O.css">
   </head>
   <body>
     <div id="app" class="app-frame">
@@ -64,7 +64,7 @@
             <h1 id="viewTitle" tabindex="-1">Vault</h1>
           </div>
           <div class="header-controls">
-            <div id="contextActions" class="context-actions" aria-label="Page actions">
+            <div id="contextActions" class="context-actions" role="group" aria-label="Page actions">
               <button id="newAction" class="secondary" type="button" data-icon="add">New Qi</button>
               <button id="saveAction" class="primary" type="button" data-icon="save">Save Qi</button>
               <button id="deleteAction" class="danger" type="button" data-icon="trash">Delete Qi</button>
@@ -77,6 +77,7 @@
                 <button type="button" role="menuitem" data-view="health" data-icon="shield" data-label="Vault Health">Vault Health <kbd>⌘3</kbd></button>
                 <button type="button" role="menuitem" data-view="backups" data-icon="backup" data-label="Backups">Backups <kbd>⌘4</kbd></button>
                 <button type="button" role="menuitem" data-view="settings" data-icon="settings" data-label="Settings">Settings <kbd>⌘5</kbd></button>
+                <button type="button" role="menuitem" data-view="help" data-icon="question" data-label="Help">Help <kbd>⌘6</kbd></button>
                 <span class="menu-divider" role="separator"></span>
                 <button id="lockButton" class="lock-menu-item" type="button" role="menuitem" data-icon="lock" data-label="Lock">Lock <kbd>⌘L</kbd></button>
               </nav>
@@ -88,7 +89,7 @@
           <section id="qiringView" class="view active-view" aria-labelledby="viewTitle">
             <aside class="master-pane">
               <div class="pane-heading">
-                <h2>Stored Qi</h2>
+                <h2 class="accent-heading">Ring</h2>
                 <div class="pane-tools">
                   <button id="ringSortMode" class="sort-action" type="button" data-icon="grip">Custom</button>
                   <div class="category-actions" aria-label="Category display">
@@ -104,15 +105,19 @@
               </div>
               <div class="search-row">
                 <label class="sr-only" for="searchInput">Search Qi</label>
-                <input id="searchInput" type="search" maxlength="256" placeholder="Search title, user, notes…" autocomplete="off" />
+                <input id="searchInput" type="search" maxlength="256" placeholder="Search names, tags, notes…" autocomplete="off" />
                 <button id="clearSearch" class="compact-button" type="button" data-icon="clear">Clear</button>
+                <div class="tag-filter">
+                  <label for="tagFilter">Tag</label>
+                  <select id="tagFilter" aria-label="Filter Ring by tag"><option value="">All tags</option></select>
+                </div>
               </div>
               <div id="itemList" class="master-list" aria-label="Vault items"></div>
             </aside>
 
             <section class="detail-pane" aria-labelledby="itemEditorTitle">
               <div class="detail-heading">
-                <h2 id="itemEditorTitle">New Qi</h2>
+                <h2 id="itemEditorTitle" class="accent-heading">New Qi</h2>
                 <span id="dirtyIndicator" class="dirty-indicator" hidden>UNSAVED</span>
               </div>
               <form id="itemForm" class="editor-form">
@@ -139,9 +144,9 @@
                     <div class="field"><label for="profileSelect">Password profile</label><select id="profileSelect"></select></div>
                     <button id="generatePassword" class="primary" type="button" data-icon="sparkle">Generate password</button>
                   </div>
-                  <div class="field-grid two">
+                  <div class="totp-stack">
                     <div class="field"><label for="itemTotpSecret">TOTP secret <span>Base32</span></label><input id="itemTotpSecret" type="password" maxlength="1024" autocomplete="off" /></div>
-                    <div class="totp-display"><span>ONE-TIME CODE</span><strong id="totpCode">— — — — — —</strong><button id="refreshTotp" class="secondary" type="button" data-icon="clock">Show current code</button><small id="totpRemaining">Uses device time; verify automatic time if a code is rejected.</small></div>
+                    <div class="totp-display"><span>ONE-TIME CODE</span><strong id="totpCode" aria-live="polite">— — — — — —</strong><button id="refreshTotp" class="secondary" type="button" data-icon="clock">Show current code</button><small id="totpRemaining">Uses device time; verify automatic time if a code is rejected.</small></div>
                   </div>
                 </section>
 
@@ -165,11 +170,11 @@
 
           <section id="profilesView" class="view split-view" hidden aria-labelledby="profilesHeading">
             <aside class="master-pane">
-              <div class="pane-heading"><div><span class="section-code">GENERATOR</span><h2 id="profilesHeading">Profiles</h2></div><span id="profileCount" class="count-badge">0</span></div>
+              <div class="pane-heading"><h2 id="profilesHeading" class="accent-heading">Profiles</h2><span id="profileCount" class="count-badge">0</span></div>
               <div id="profileList" class="master-list" aria-label="Password profiles"></div>
             </aside>
             <section class="detail-pane" aria-labelledby="profileEditorTitle">
-              <div class="detail-heading"><div><span class="section-code">COMPOSITION POLICY</span><h2 id="profileEditorTitle">New profile</h2></div><span id="profileDirtyIndicator" class="dirty-indicator" hidden>UNSAVED</span></div>
+              <div class="detail-heading"><h2 id="profileEditorTitle" class="accent-heading">New profile</h2><span id="profileDirtyIndicator" class="dirty-indicator" hidden>UNSAVED</span></div>
               <form id="profileForm" class="editor-form">
                 <div class="field-grid two">
                   <div class="field"><label for="profileName">Profile name</label><input id="profileName" maxlength="256" required /></div>
@@ -192,29 +197,83 @@
             </section>
           </section>
 
-          <section id="healthView" class="view module-view" hidden aria-labelledby="healthHeading">
-            <div class="module-heading"><div><span class="section-code">OFFLINE ANALYSIS</span><h2 id="healthHeading">Vault health</h2><p>Weak, reused, and old credentials are detected locally. No password or hash is sent over the network.</p></div><button id="runHealth" class="primary" type="button" data-icon="play">Run analysis</button></div>
+          <section id="healthView" class="view module-view" hidden aria-labelledby="viewTitle">
+            <div class="module-intro"><p>Weak, reused, and old credentials are detected locally. No password or hash is sent over the network.</p><button id="runHealth" class="primary" type="button" data-icon="play">Run analysis</button></div>
             <div class="metric-grid"><div><span>ANALYZED</span><strong id="healthAnalyzed">—</strong></div><div><span>WEAK</span><strong id="healthWeak">—</strong></div><div><span>REUSED</span><strong id="healthReused">—</strong></div><div><span>OLD</span><strong id="healthOld">—</strong></div></div>
             <div id="healthIssues" class="issue-list"><p class="empty-message">Run the offline analysis to inspect vault health.</p></div>
           </section>
 
-          <section id="backupsView" class="view module-view" hidden aria-labelledby="backupsHeading">
-            <div class="module-heading"><div><span class="section-code">DISASTER RECOVERY</span><h2 id="backupsHeading">Encrypted backups</h2><p>Manual exports add a second passphrase layer. Automatic snapshots remain protected by the vault encryption.</p></div></div>
+          <section id="backupsView" class="view module-view" hidden aria-labelledby="viewTitle">
+            <div class="module-intro"><p>Manual exports add a second passphrase layer. Automatic snapshots remain protected by the vault encryption.</p></div>
             <div class="settings-grid">
-              <section class="settings-section"><h3>Manual export</h3><div class="field"><label for="backupPassphrase">Backup passphrase</label><input id="backupPassphrase" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /></div><button id="exportBackup" class="primary section-action" type="button" data-icon="download">Choose destination and export</button></section>
-              <section class="settings-section"><h3>Restore preview</h3><button id="selectBackup" class="secondary" type="button" data-icon="file">Choose encrypted backup</button><p id="selectedBackupPath" class="path-display">No backup selected.</p><div class="field"><label for="restorePassphrase">Backup passphrase</label><input id="restorePassphrase" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /></div><div class="button-row"><button id="previewBackup" class="secondary" type="button" data-icon="eye">Preview</button><button id="restoreBackup" class="danger" type="button" data-icon="undo" disabled>Restore previewed backup</button></div><div id="backupPreview" class="preview-box" hidden></div></section>
+              <section class="settings-section"><h2>Manual export</h2><div class="field"><label for="backupPassphrase">Backup passphrase</label><input id="backupPassphrase" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /></div><button id="exportBackup" class="primary section-action" type="button" data-icon="download">Choose destination and export</button></section>
+              <section class="settings-section"><h2>Restore preview</h2><button id="selectBackup" class="secondary" type="button" data-icon="file">Choose encrypted backup</button><p id="selectedBackupPath" class="path-display">No backup selected.</p><div class="field"><label for="restorePassphrase">Backup passphrase</label><input id="restorePassphrase" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /></div><div class="button-row"><button id="previewBackup" class="secondary" type="button" data-icon="eye">Preview</button><button id="restoreBackup" class="danger" type="button" data-icon="undo" disabled>Restore previewed backup</button></div><div id="backupPreview" class="preview-box" hidden></div></section>
             </div>
-            <section class="snapshot-section"><div class="section-heading"><h3>Automatic snapshots</h3><button id="refreshSnapshots" class="secondary compact" type="button" data-icon="refresh">Refresh</button></div><div id="snapshotList" class="snapshot-list"><p class="empty-message">Configure automatic snapshots in Settings.</p></div></section>
+            <section class="snapshot-section"><div class="section-heading"><h2>Automatic snapshots</h2><button id="refreshSnapshots" class="secondary compact" type="button" data-icon="refresh">Refresh</button></div><div id="snapshotList" class="snapshot-list"><p class="empty-message">Configure automatic snapshots in Settings.</p></div></section>
           </section>
 
-          <section id="settingsView" class="view module-view" hidden aria-labelledby="settingsHeading">
-            <div class="module-heading"><div><span class="section-code">VAULT POLICY</span><h2 id="settingsHeading">Settings</h2><p>Security controls are stored inside the encrypted vault and enforced by the Rust service.</p></div></div>
+          <section id="settingsView" class="view module-view" hidden aria-labelledby="viewTitle">
+            <div class="module-intro"><p>Security controls are stored inside the encrypted vault and enforced by the Rust service.</p></div>
             <form id="settingsForm" class="settings-grid">
-              <section class="settings-section"><h3>Session</h3><div class="field-grid two"><div class="field"><label for="autoLockMinutes">Auto-lock minutes</label><input id="autoLockMinutes" type="number" min="1" max="1440" required /></div><div class="field"><label for="clipboardSeconds">Clipboard clear seconds</label><input id="clipboardSeconds" type="number" min="5" max="300" required /></div></div><label class="check-row"><input id="lockOnMinimize" type="checkbox" /><span>Lock when the window is minimized</span></label><label class="check-row"><input id="lockOnBlur" type="checkbox" /><span>Lock when the window loses focus</span></label><div class="field-grid two"><div class="field"><label for="themeSelect">Theme</label><select id="themeSelect"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div><div class="field"><label for="buttonDisplaySelect">Button display</label><select id="buttonDisplaySelect"><option value="both">Icon + label</option><option value="icons">Icon only</option><option value="labels">Label only</option></select></div></div></section>
-              <section class="settings-section"><h3>Automatic snapshots</h3><label class="check-row"><input id="automaticBackups" type="checkbox" /><span>Create a snapshot after vault changes</span></label><label class="check-row"><input id="includeSettings" type="checkbox" /><span>Include encrypted settings in manual exports</span></label><div class="field"><label for="backupRetention">Snapshots to retain</label><input id="backupRetention" type="number" min="1" max="100" required /></div><div class="field"><label for="backupDirectory">Backup directory</label><div class="inline-control"><input id="backupDirectory" readonly /><button id="chooseBackupDirectory" class="secondary" type="button" data-icon="folder">Choose</button></div></div></section>
-              <section class="settings-section"><h3>Master password</h3><div class="field"><label for="oldMasterPassword">Current master password</label><input id="oldMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /></div><div class="field"><label for="newMasterPassword">New master password</label><input id="newMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /></div><button id="rotateMaster" class="secondary section-action" type="button" data-icon="rotate">Rotate master password</button></section>
-              <section class="settings-section"><h3>Recovery key</h3><p>Generate a replacement key after confirming your master password. The old recovery key stops working immediately.</p><div class="field"><label for="recoveryMasterPassword">Master password</label><input id="recoveryMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /></div><button id="regenerateRecovery" class="danger section-action" type="button" data-icon="key">Replace recovery key</button></section>
+              <section class="settings-section"><h2>Session</h2><div class="field-grid two"><div class="field"><label for="autoLockMinutes">Auto-lock minutes</label><input id="autoLockMinutes" type="number" min="1" max="1440" required /></div><div class="field"><label for="clipboardSeconds">Clipboard clear seconds</label><input id="clipboardSeconds" type="number" min="5" max="300" required /></div></div><label class="check-row"><input id="lockOnMinimize" type="checkbox" /><span>Lock when the window is minimized</span></label><label class="check-row"><input id="lockOnBlur" type="checkbox" /><span>Lock when the window loses focus</span></label><div class="field-grid two"><div class="field"><label for="themeSelect">Theme</label><select id="themeSelect"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div><div class="field"><label for="buttonDisplaySelect">Button display</label><select id="buttonDisplaySelect"><option value="both">Icon + label</option><option value="icons">Icon only</option><option value="labels">Label only</option></select></div></div></section>
+              <section class="settings-section"><h2>Automatic snapshots</h2><label class="check-row"><input id="automaticBackups" type="checkbox" /><span>Create a snapshot after vault changes</span></label><label class="check-row"><input id="includeSettings" type="checkbox" /><span>Include encrypted settings in manual exports</span></label><div class="field"><label for="backupRetention">Snapshots to retain</label><input id="backupRetention" type="number" min="1" max="100" required /></div><div class="field"><label for="backupDirectory">Backup directory</label><div class="inline-control"><input id="backupDirectory" readonly /><button id="chooseBackupDirectory" class="secondary" type="button" data-icon="folder">Choose</button></div></div></section>
+              <section class="settings-section"><h2>Master password</h2><div class="field"><label for="oldMasterPassword">Current master password</label><input id="oldMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /></div><div class="field"><label for="newMasterPassword">New master password</label><input id="newMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /></div><button id="rotateMaster" class="secondary section-action" type="button" data-icon="rotate">Rotate master password</button></section>
+              <section class="settings-section"><h2>Recovery key</h2><p>Generate a replacement key after confirming your master password. The old recovery key stops working immediately.</p><div class="field"><label for="recoveryMasterPassword">Master password</label><input id="recoveryMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /></div><button id="regenerateRecovery" class="danger section-action" type="button" data-icon="key">Replace recovery key</button></section>
             </form>
+          </section>
+
+          <section id="helpView" class="view module-view help-view" hidden tabindex="0" aria-labelledby="viewTitle">
+            <div class="module-intro"><p>A guide to every QiRing page, control, and security setting.</p></div>
+            <div class="help-grid">
+              <section class="help-section">
+                <h2>Unlock &amp; recovery</h2>
+                <p>Unlock opens the encrypted vault with your master password. Recovery unlock uses the offline recovery key and immediately asks you to establish a new master password and recovery key.</p>
+                <p>QiRing cannot retrieve either secret. Store the recovery key somewhere separate from this computer, and use <strong>Lock</strong> whenever you leave the device.</p>
+              </section>
+              <section class="help-section">
+                <h2>Vault</h2>
+                <p>The <strong>Ring</strong> on the left groups Qi by category. Search matches names, usernames, notes, and tags; the Tag selector applies an exact tag filter. The sort control cycles through A–Z, Z–A, and Custom ordering.</p>
+                <p>Select a Qi to edit its name, type, category, tags, website, credentials, icon, TOTP setup key, notes, security questions, and password history. Upload an icon or import the site favicon. Save before leaving; deleting a Qi requires confirmation and offers a temporary Undo action.</p>
+                <p><strong>One-time codes:</strong> save a Base32 TOTP setup key with the Qi, then choose Show Current Code. Codes are derived locally from the saved key and device time.</p>
+              </section>
+              <section class="help-section">
+                <h2>Password profiles</h2>
+                <p>Profiles define reusable password-generation rules. Choose the total length and the permitted minimum and maximum counts for uppercase letters, lowercase letters, numbers, and symbols.</p>
+                <p>Allowed Symbols restricts the symbol set. Avoid Ambiguous Characters removes easily confused characters. Test Profile previews a generated password without saving the profile. At least 1 profile must remain.</p>
+              </section>
+              <section class="help-section">
+                <h2>Vault health</h2>
+                <p>Run Analysis checks credentials locally and reports weak, reused, and old passwords. Weak passwords are short or lack variety; reused passwords appear in more than 1 Qi; old passwords belong to Qi that have not been updated for 180 days.</p>
+                <p>Choose Open Qi beside an issue to review and update that entry. Passwords and password hashes are never sent to a network service for analysis.</p>
+              </section>
+              <section class="help-section">
+                <h2>Encrypted backups</h2>
+                <p>Manual Export creates a portable encrypted backup protected by a separate passphrase. Keep that passphrase outside the backup file. Restore Preview authenticates a selected backup and shows what it contains before Restore is enabled.</p>
+                <p>Automatic Snapshots are local safety copies protected by vault encryption. Refresh reloads the available snapshot list; restoring a snapshot replaces the current vault and then locks QiRing.</p>
+              </section>
+              <section class="help-section help-section-wide">
+                <h2>Settings</h2>
+                <dl class="help-definitions">
+                  <div><dt>Auto-lock minutes</dt><dd>Locks the vault after 1–1,440 minutes without qualifying activity.</dd></div>
+                  <div><dt>Clipboard clear seconds</dt><dd>Attempts to clear a copied QiRing secret after 5–300 seconds, provided the clipboard still contains the same value.</dd></div>
+                  <div><dt>Lock when minimized</dt><dd>Locks immediately whenever the QiRing window is minimized.</dd></div>
+                  <div><dt>Lock when focus is lost</dt><dd>Locks when you switch to another window. Enable this for stronger shoulder-surfing protection.</dd></div>
+                  <div><dt>Theme</dt><dd>System follows the operating-system appearance; Dark and Light keep a fixed QiRing theme.</dd></div>
+                  <div><dt>Button display</dt><dd>Shows icon + label, icon only, or label only on supported controls. Navigation menu labels always remain visible; icon-only controls expose their names on hover.</dd></div>
+                  <div><dt>Create snapshots after changes</dt><dd>Creates an encrypted automatic snapshot after supported vault changes.</dd></div>
+                  <div><dt>Include settings in manual exports</dt><dd>Adds the encrypted application settings to newly created manual backup files.</dd></div>
+                  <div><dt>Snapshots to retain</dt><dd>Keeps the newest 1–100 automatic snapshots and removes older copies beyond that limit.</dd></div>
+                  <div><dt>Backup directory</dt><dd>Selects where automatic snapshots are stored. Choose a durable, user-owned location.</dd></div>
+                  <div><dt>Rotate master password</dt><dd>Verifies the current password, re-encrypts the vault under the new password, and keeps the existing vault contents.</dd></div>
+                  <div><dt>Replace recovery key</dt><dd>Verifies the master password, invalidates the old recovery key, and starts the save/verify ceremony for the replacement.</dd></div>
+                </dl>
+                <p>Settings are not persistent until you choose <strong>Save Settings</strong>. QiRing prompts you to save or discard pending changes before navigating or locking.</p>
+              </section>
+              <section class="help-section help-section-wide">
+                <h2>Navigation &amp; shortcuts</h2>
+                <p>Use the menu or <kbd>Ctrl/⌘ 1–6</kbd> to open Vault, Password Profiles, Vault Health, Encrypted Backups, Settings, or Help. <kbd>Ctrl/⌘ K</kbd> focuses Ring search, <kbd>Ctrl/⌘ S</kbd> saves, <kbd>Ctrl/⌘ N</kbd> creates a new Qi or profile, and <kbd>Ctrl/⌘ L</kbd> locks.</p>
+              </section>
+            </div>
           </section>
         </div>
       </section>
@@ -242,6 +301,15 @@
         <button id="stayOnPage" class="secondary" type="button" data-icon="remove">Stay</button>
         <button id="discardAndContinue" class="danger" type="button" data-icon="trash">Discard</button>
         <button id="saveAndContinue" class="primary" type="button" data-icon="save">Save &amp; Continue</button>
+      </div>
+    </dialog>
+
+    <dialog id="confirmationDialog" class="confirmation-dialog" aria-labelledby="confirmationDialogTitle" aria-describedby="confirmationDialogMessage">
+      <h2 id="confirmationDialogTitle">Confirm action</h2>
+      <p id="confirmationDialogMessage">Are you sure?</p>
+      <div class="confirmation-actions">
+        <button id="cancelConfirmation" class="secondary" type="button" data-icon="remove">Cancel</button>
+        <button id="confirmAction" class="danger" type="button" data-icon="trash">Delete</button>
       </div>
     </dialog>
 

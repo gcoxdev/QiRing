@@ -41,3 +41,23 @@ test("favicon import is capability scoped and blocks private networks", async ()
   assert.match(backend, /addresses\.iter\(\)\.any\(\|address\| !is_public_ip/);
   assert.match(backend, /MAX_QI_ICON_BYTES/);
 });
+
+test("password-derived vault work runs off the Tauri main thread", async () => {
+  const backend = await read("../src-tauri/src/lib.rs");
+  assert.match(backend, /async fn unlock_vault_master[\s\S]*?run_service_blocking/);
+  assert.match(backend, /async fn unlock_vault_recovery[\s\S]*?run_service_blocking/);
+  assert.match(backend, /async fn rotate_master_password[\s\S]*?run_service_blocking/);
+  assert.match(backend, /async fn run_service_blocking[\s\S]*?spawn_blocking/);
+});
+
+test("window state is durable and Linux backend selection is explicit", async () => {
+  const backend = await read("../src-tauri/src/lib.rs");
+  const launcher = await read("../../../scripts/run-desktop.sh");
+  assert.match(backend, /WINDOW_BOUNDS_PERSIST_DELAY/);
+  assert.match(backend, /persist_window_bounds_if_settled/);
+  assert.match(backend, /absolute_window_position_supported/);
+  assert.match(launcher, /QIRING_WINDOW_BACKEND/);
+  assert.match(launcher, /--x11/);
+  assert.match(launcher, /--wayland/);
+  assert.match(launcher, /WINIT_UNIX_BACKEND/);
+});

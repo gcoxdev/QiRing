@@ -26,9 +26,9 @@ async function installTauriMock(page) {
       }
     }];
     const items = [
-      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", item_type: "login", title: "Admin", username: "admin@example.com", folder: "Work", tags: [], icon_data_url: null, has_totp: true, updated_at: new Date().toISOString() },
-      { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", item_type: "login", title: "Billing", username: "billing@example.com", folder: "Work", tags: [], icon_data_url: null, has_totp: false, updated_at: new Date().toISOString() },
-      { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", item_type: "secure_note", title: "Passport", username: null, folder: "Personal", tags: [], icon_data_url: null, has_totp: false, updated_at: new Date().toISOString() }
+      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", item_type: "login", title: "Admin", username: "admin@example.com", folder: "Work", tags: ["critical", "work"], icon_data_url: null, has_totp: true, updated_at: new Date().toISOString() },
+      { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", item_type: "login", title: "Billing", username: "billing@example.com", folder: "Work", tags: ["finance", "work"], icon_data_url: null, has_totp: false, updated_at: new Date().toISOString() },
+      { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", item_type: "secure_note", title: "Passport", username: null, folder: "Personal", tags: ["identity"], icon_data_url: null, has_totp: false, updated_at: new Date().toISOString() }
     ];
     const itemRecords = new Map(items.map((item) => [item.id, {
       ...item,
@@ -97,9 +97,12 @@ async function installTauriMock(page) {
           case "list_profiles": return structuredClone(profiles);
           case "list_items": {
             const query = args.filter?.query?.toLocaleLowerCase();
-            return structuredClone(query
-              ? items.filter((item) => [item.title, item.username, item.folder].some((value) => value?.toLocaleLowerCase().includes(query)))
-              : items);
+            const tag = args.filter?.tag;
+            return structuredClone(items.filter((item) => {
+              const matchesQuery = !query || [item.title, item.username, item.folder, ...(item.tags || [])]
+                .some((value) => value?.toLocaleLowerCase().includes(query));
+              return matchesQuery && (!tag || item.tags.includes(tag));
+            }));
           }
           case "get_item": return structuredClone(itemRecords.get(args.itemId));
           case "add_item": {
@@ -140,8 +143,15 @@ async function installTauriMock(page) {
             });
             return null;
           }
+          case "delete_item": {
+            const index = items.findIndex((item) => item.id === args.itemId);
+            if (index >= 0) items.splice(index, 1);
+            itemRecords.delete(args.itemId);
+            return null;
+          }
           case "select_item_icon_dialog": return "data:image/png;base64,iVBORw0KGgo=";
           case "fetch_favicon": return "data:image/png;base64,iVBORw0KGgo=";
+          case "get_totp_code": return { code: "123456", valid_for_seconds: 30 };
           case "get_settings": return structuredClone(settings);
           case "update_settings": Object.assign(settings, structuredClone(args.settings)); return null;
           case "generate_password": return { value: "Aaaa1111!!!!MockPass".slice(0, args.policy.length) };
@@ -153,7 +163,25 @@ async function installTauriMock(page) {
             else profiles.push(profile);
             return profile.id;
           }
-          case "health_report": return { analyzed_items: 0, weak_count: 0, reused_count: 0, old_count: 0, issues: [] };
+          case "delete_profile": {
+            const index = profiles.findIndex((profile) => profile.id === args.profileId);
+            if (index >= 0) profiles.splice(index, 1);
+            return null;
+          }
+          case "health_report": return window.__healthWithIssue
+            ? {
+                analyzed_items: 1,
+                weak_count: 1,
+                reused_count: 0,
+                old_count: 0,
+                issues: [{
+                  item_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                  title: "Admin",
+                  kind: "weak",
+                  detail: "Password is short or lacks character variety."
+                }]
+              }
+            : { analyzed_items: 0, weak_count: 0, reused_count: 0, old_count: 0, issues: [] };
           case "list_snapshots": return [];
           case "touch_activity": return null;
           case "copy_secret": return 30;
@@ -177,7 +205,14 @@ test.beforeEach(async ({ page }) => {
   await unlockButton.click();
   await expect(unlockButton).toHaveAttribute("aria-busy", "true");
   await expect(unlockButton).toHaveText("Unlocking…");
-  await expect(page.getByRole("heading", { name: "Stored Qi" })).toBeVisible({ timeout: 15_000 });
+  const paintedFrames = await page.evaluate(async () => {
+    const start = window.__frameCounter;
+    await new Promise((resolve) => window.setTimeout(resolve, 220));
+    return window.__frameCounter - start;
+  });
+  expect(paintedFrames).toBeGreaterThan(4);
+  await expect(page.getByRole("heading", { name: "Ring", exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByLabel("Name", { exact: true })).toBeFocused();
   const feedback = await page.evaluate(() => window.__unlockFeedbackAtInvoke);
   expect(feedback.busy).toBe("true");
   expect(feedback.label).toBe("Unlocking…");
@@ -275,6 +310,190 @@ test("controls align and the 800 by 600 layouts do not clip", async ({ page }) =
   expect(Math.abs(authAlignment.formCenter - authAlignment.viewportCenter)).toBeLessThan(12);
 });
 
+test("credential, TOTP, and security-question controls reflow at minimum width", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.getByRole("button", { name: "Expand all categories" }).click();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+
+  const credentialPositions = await page.locator("#itemUsername, #itemPassword").evaluateAll(([username, password]) => {
+    const usernameField = username.closest(".field").getBoundingClientRect();
+    const passwordField = password.closest(".field").getBoundingClientRect();
+    return { usernameBottom: usernameField.bottom, passwordTop: passwordField.top };
+  });
+  expect(credentialPositions.passwordTop).toBeGreaterThanOrEqual(credentialPositions.usernameBottom);
+
+  await page.getByRole("button", { name: "Show current code" }).click();
+  await expect(page.locator("#totpCode")).toHaveText("123456");
+  const totpPositions = await page.locator(".totp-stack").evaluate((stack) => {
+    const secret = stack.querySelector(".field").getBoundingClientRect();
+    const display = stack.querySelector(".totp-display").getBoundingClientRect();
+    const code = stack.querySelector("#totpCode").getBoundingClientRect();
+    const button = stack.querySelector("#refreshTotp").getBoundingClientRect();
+    return {
+      displayBelowSecret: display.top >= secret.bottom,
+      buttonBelowCode: button.top >= code.bottom,
+      codeWhiteSpace: getComputedStyle(stack.querySelector("#totpCode")).whiteSpace,
+      codeHeight: code.height
+    };
+  });
+  expect(totpPositions.displayBelowSecret).toBe(true);
+  expect(totpPositions.buttonBelowCode).toBe(true);
+  expect(totpPositions.codeWhiteSpace).toBe("nowrap");
+  expect(totpPositions.codeHeight).toBeLessThan(32);
+
+  await page.getByRole("button", { name: "Add question" }).click();
+  const questionPositions = await page.locator(".question-row").evaluate((row) => {
+    const question = row.querySelector(".question-input").getBoundingClientRect();
+    const answer = row.querySelector(".answer-input").getBoundingClientRect();
+    const copy = row.querySelector(".copy-question").getBoundingClientRect();
+    const remove = row.querySelector(".remove-question").getBoundingClientRect();
+    const bounds = row.getBoundingClientRect();
+    return {
+      answerBelowQuestion: answer.top >= question.bottom,
+      actionsShareRow: Math.abs(copy.top - remove.top) < 1,
+      removeInside: remove.right <= bounds.right + 1
+    };
+  });
+  expect(questionPositions.answerBelowQuestion).toBe(true);
+  expect(questionPositions.actionsShareRow).toBe(true);
+  expect(questionPositions.removeInside).toBe(true);
+});
+
+test("TOTP actions sit beside the code and the generator stays intrinsic at wider widths", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.getByRole("button", { name: "Expand all categories" }).click();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  await page.getByRole("button", { name: "Show current code" }).click();
+
+  const layout = await page.locator("#itemForm").evaluate((editor) => {
+    const code = editor.querySelector("#totpCode").getBoundingClientRect();
+    const totpButton = editor.querySelector("#refreshTotp").getBoundingClientRect();
+    const note = editor.querySelector("#totpRemaining").getBoundingClientRect();
+    const generator = editor.querySelector(".generator-strip").getBoundingClientRect();
+    const profile = editor.querySelector("#profileSelect").getBoundingClientRect();
+    const generate = editor.querySelector("#generatePassword").getBoundingClientRect();
+    return {
+      buttonBesideCode: totpButton.left >= code.right,
+      noteBesideCode: note.left >= code.right,
+      profileEndsBeforeButton: profile.right <= generate.left,
+      generateWidth: generate.width,
+      generatorWidth: generator.width,
+      generateCssWidth: getComputedStyle(editor.querySelector("#generatePassword")).width
+    };
+  });
+  expect(layout.buttonBesideCode).toBe(true);
+  expect(layout.noteBesideCode).toBe(true);
+  expect(layout.profileEndsBeforeButton).toBe(true);
+  expect(layout.generateWidth).toBeLessThan(layout.generatorWidth / 2);
+  expect(Number.parseFloat(layout.generateCssWidth)).toBeCloseTo(layout.generateWidth, 0);
+});
+
+test("Ring search and tag filtering discover tagged Qi", async ({ page }) => {
+  const tagFilter = page.getByLabel("Filter Ring by tag");
+  await expect(tagFilter.locator("option")).toHaveText(["All tags", "critical", "finance", "identity", "work"]);
+  await tagFilter.selectOption("finance");
+  await expect(page.getByRole("button", { name: "Billing", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Admin", exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Clear" }).click();
+  await page.getByLabel("Search Qi").fill("identity");
+  await expect(page.getByRole("button", { name: "Passport", exact: true })).toBeVisible();
+  await expect(page.locator("#itemCount")).toHaveText("1");
+});
+
+test("health issue actions keep readable labels at minimum width", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.evaluate(() => { window.__healthWithIssue = true; });
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /Vault Health/ }).click();
+  const widths = await page.locator("#runHealth, #healthIssues .issue-row button").evaluateAll((buttons) => buttons.map((button) => ({
+    width: button.getBoundingClientRect().width,
+    whiteSpace: getComputedStyle(button).whiteSpace
+  })));
+  expect(widths).toEqual([
+    expect.objectContaining({ whiteSpace: "nowrap" }),
+    expect.objectContaining({ whiteSpace: "nowrap" })
+  ]);
+  expect(widths[0].width).toBeGreaterThanOrEqual(142);
+  expect(widths[1].width).toBeGreaterThanOrEqual(96);
+  const bounds = await page.locator("#healthIssues").evaluate((list) => {
+    const outer = list.getBoundingClientRect();
+    const row = list.querySelector(".issue-row").getBoundingClientRect();
+    return { outerRight: outer.right, rowRight: row.right, viewport: window.innerWidth };
+  });
+  expect(bounds.rowRight).toBeLessThanOrEqual(bounds.outerRight + 1);
+  expect(bounds.rowRight).toBeLessThanOrEqual(bounds.viewport);
+});
+
+test("destructive Qi and profile actions use explicit in-app confirmation", async ({ page }) => {
+  await page.getByRole("button", { name: "Expand all categories" }).click();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  await page.getByRole("button", { name: "Delete Qi" }).click();
+  const qiDialog = page.getByRole("dialog", { name: "Delete Qi?" });
+  await expect(qiDialog).toContainText("Delete “Admin” from the vault?");
+  await qiDialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("button", { name: "Admin", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Delete Qi" }).click();
+  await qiDialog.getByRole("button", { name: "Delete Qi" }).click();
+  await expect(page.getByRole("button", { name: "Admin", exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /Password Profiles/ }).click();
+  await page.getByRole("button", { name: "New Profile" }).click();
+  await page.getByLabel("Profile name").fill("Disposable Profile");
+  await page.getByRole("button", { name: "Save Profile" }).click();
+  await page.getByRole("button", { name: "Delete Profile" }).click();
+  const profileDialog = page.getByRole("dialog", { name: "Delete password profile?" });
+  await expect(profileDialog).toContainText("Delete “Disposable Profile”?");
+  await profileDialog.getByRole("button", { name: "Delete Profile" }).click();
+  await expect(page.locator("#profileList")).not.toContainText("Disposable Profile");
+});
+
+test("accent headings establish hierarchy without redundant section codes", async ({ page }) => {
+  const accent = "rgb(157, 247, 199)";
+  await expect(page.locator("#viewTitle")).toHaveCSS("color", accent);
+  await expect(page.getByRole("heading", { name: "Ring", exact: true })).toHaveCSS("color", accent);
+  await page.getByRole("button", { name: "Expand all categories" }).click();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  await expect(page.locator("#itemEditorTitle")).toHaveCSS("color", accent);
+
+  const modules = [
+    ["Password Profiles", "#profilesView", "Password Profiles"],
+    ["Vault Health", "#healthView", "Vault Health"],
+    ["Backups", "#backupsView", "Encrypted Backups"],
+    ["Settings", "#settingsView", "Settings"],
+    ["Help", "#helpView", "Help"]
+  ];
+  for (const [menuName, view, pageTitle] of modules) {
+    await page.getByRole("button", { name: "Open navigation menu" }).click();
+    await page.getByRole("menuitem", { name: new RegExp(menuName) }).click();
+    await expect(page.locator(view)).toBeVisible();
+    await expect(page.locator("#viewTitle")).toHaveText(pageTitle);
+    await expect(page.locator("#viewTitle")).toHaveCSS("color", accent);
+  }
+  await expect(page.locator("#healthHeading, #backupsHeading, #settingsHeading, #helpHeading, .module-heading")).toHaveCount(0);
+});
+
+test("Help documents every module, setting, and keyboard route", async ({ page }) => {
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /^Help/ }).click();
+  await expect(page.locator("#viewTitle")).toHaveText("Help");
+  for (const heading of ["Unlock & recovery", "Vault", "Password profiles", "Vault health", "Encrypted backups", "Settings", "Navigation & shortcuts"]) {
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+  }
+  for (const setting of ["Auto-lock minutes", "Clipboard clear seconds", "Theme", "Button display", "Backup directory", "Rotate master password", "Replace recovery key"]) {
+    await expect(page.locator("#helpView dt", { hasText: setting })).toBeVisible();
+  }
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations).toEqual([]);
+  await page.keyboard.press("Control+1");
+  await expect(page.getByRole("heading", { name: "Ring", exact: true })).toBeVisible();
+  await page.keyboard.press("Control+6");
+  await expect(page.locator("#helpView")).toBeVisible();
+  await expect(page.locator("#viewTitle")).toHaveText("Help");
+});
+
 test("ring categories expose collapsible groups with live counters", async ({ page }) => {
   const work = page.locator("details.category-group").filter({ has: page.getByText("Work", { exact: true }) });
   const personal = page.locator("details.category-group").filter({ has: page.getByText("Personal", { exact: true }) });
@@ -284,6 +503,12 @@ test("ring categories expose collapsible groups with live counters", async ({ pa
   await expect(work).not.toHaveAttribute("open", "");
   await expect(work.getByRole("button", { name: /Admin/ })).toBeHidden();
   await expect(page.getByRole("button", { name: "Collapse all categories" })).toBeDisabled();
+  const chevron = await work.locator(".category-chevron").evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const [originX, originY] = getComputedStyle(element).transformOrigin.split(" ").map(Number.parseFloat);
+    return { width: bounds.width, height: bounds.height, originX, originY };
+  });
+  expect(chevron).toEqual({ width: 12, height: 12, originX: 6, originY: 6 });
   await page.getByRole("button", { name: "Expand all categories" }).click();
   await expect(work.getByRole("button", { name: "Admin", exact: true }).locator("strong")).toHaveText("Admin");
   await expect(work).not.toContainText("admin@example.com");
@@ -293,6 +518,17 @@ test("ring categories expose collapsible groups with live counters", async ({ pa
   await expect(work).not.toHaveAttribute("open", "");
   await work.locator("summary").click();
   await expect(work.getByRole("button", { name: "Admin", exact: true })).toBeVisible();
+});
+
+test("selecting Ring entries preserves every expanded category", async ({ page }) => {
+  await page.getByRole("button", { name: "Expand all categories" }).click();
+  const categories = page.locator("#itemList > details.category-group");
+  await expect(categories).toHaveCount(2);
+
+  for (const name of ["Admin", "Passport", "Billing", "Admin"]) {
+    await page.getByRole("button", { name, exact: true }).click();
+    for (const category of await categories.all()) await expect(category).toHaveAttribute("open", "");
+  }
 });
 
 test("Ring sorting cycles through alphabetic modes and preserves draggable custom order", async ({ page }) => {
@@ -346,6 +582,24 @@ test("switching Qi offers save, discard, and stay choices", async ({ page }) => 
 });
 
 test("list controls align and profile rows show unclipped names only", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await expect(page.locator("#qiringView > .master-pane")).toHaveCSS("width", "265px");
+  const ringHeader = await page.locator("#qiringView .pane-heading").evaluate((heading) => {
+    const title = heading.querySelector("h2").getBoundingClientRect();
+    const tools = heading.querySelector(".pane-tools").getBoundingClientRect();
+    const sortButton = heading.querySelector("#ringSortMode").getBoundingClientRect();
+    const sortLabel = heading.querySelector("#ringSortMode .button-label").getBoundingClientRect();
+    const bounds = heading.getBoundingClientRect();
+    return {
+      titleCenter: title.top + title.height / 2,
+      toolsCenter: tools.top + tools.height / 2,
+      toolsInside: tools.right <= bounds.right,
+      sortLabelFits: sortLabel.height <= sortButton.height
+    };
+  });
+  expect(Math.abs(ringHeader.titleCenter - ringHeader.toolsCenter)).toBeLessThan(1);
+  expect(ringHeader.toolsInside).toBe(true);
+  expect(ringHeader.sortLabelFits).toBe(true);
   const vaultHeights = await page.locator("#searchInput, #clearSearch").evaluateAll((controls) => controls.map((control) => control.getBoundingClientRect().height));
   expect(new Set(vaultHeights).size).toBe(1);
   const counterHeights = await page.locator("#itemCount, #ringSortMode, #expandCategories, #collapseCategories").evaluateAll((controls) => controls.map((control) => control.getBoundingClientRect().height));
@@ -379,7 +633,7 @@ test("light theme styles native selects and save-before-lock persists settings",
 
   await page.locator("#unlockMaster").fill("correct horse battery staple");
   await page.getByRole("button", { name: "Unlock", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Stored Qi" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Ring", exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 });
 
@@ -458,19 +712,21 @@ test("Settings navigation uses a gear icon", async ({ page }) => {
 
 test("all authenticated modules and keyboard navigation remain usable", async ({ page }) => {
   const modules = [
-    ["Password Profiles", "#profilesHeading", "Profiles"],
-    ["Vault Health", "#healthHeading", "Vault health"],
-    ["Backups", "#backupsHeading", "Encrypted backups"],
-    ["Settings", "#settingsHeading", "Settings"]
+    ["Password Profiles", "#profilesView", "Password Profiles"],
+    ["Vault Health", "#healthView", "Vault Health"],
+    ["Backups", "#backupsView", "Encrypted Backups"],
+    ["Settings", "#settingsView", "Settings"],
+    ["Help", "#helpView", "Help"]
   ];
-  for (const [menuName, headingSelector, heading] of modules) {
+  for (const [menuName, viewSelector, pageTitle] of modules) {
     await page.getByRole("button", { name: "Open navigation menu" }).click();
     await page.getByRole("menuitem", { name: new RegExp(menuName) }).click();
-    await expect(page.locator(headingSelector)).toHaveText(heading);
+    await expect(page.locator(viewSelector)).toBeVisible();
+    await expect(page.locator("#viewTitle")).toHaveText(pageTitle);
   }
 
   await page.keyboard.press("Control+1");
-  await expect(page.getByRole("heading", { name: "Stored Qi" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ring", exact: true })).toBeVisible();
   await page.keyboard.press("Control+k");
   await expect(page.locator("#searchInput")).toBeFocused();
 

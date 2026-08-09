@@ -422,6 +422,9 @@ impl VaultService {
         {
             return Err(CoreError::InvalidInput("search query is too long".into()).into());
         }
+        if filter.tag.as_ref().is_some_and(|tag| tag.chars().count() > 64) {
+            return Err(CoreError::InvalidInput("tag filter is too long".into()).into());
+        }
         let session = self.session_mut()?;
         let query = filter.query.unwrap_or_default().to_lowercase();
         let mut output = session
@@ -448,6 +451,7 @@ impl VaultService {
                         .unwrap_or_default()
                         .to_lowercase()
                         .contains(&query)
+                    && !item.tags.iter().any(|tag| tag.to_lowercase().contains(&query))
                 {
                     return false;
                 }
@@ -1198,6 +1202,26 @@ mod tests {
         let item_id = service.add_item(login("GitHub", "secret")).expect("add");
         assert_eq!(service.list_items(ListFilter::default()).expect("list").len(), 1);
         assert_eq!(service.get_item(item_id).expect("get").title, "GitHub");
+        assert_eq!(
+            service
+                .list_items(ListFilter {
+                    query: Some("TEST".into()),
+                    ..Default::default()
+                })
+                .expect("search tags")
+                .len(),
+            1
+        );
+        assert_eq!(
+            service
+                .list_items(ListFilter {
+                    tag: Some("test".into()),
+                    ..Default::default()
+                })
+                .expect("filter tags")
+                .len(),
+            1
+        );
     }
 
     #[test]

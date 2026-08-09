@@ -17,6 +17,7 @@ All actionable work before and after the assessment's **Later, after the securit
 | Auto-lock/lifecycle | Rust now owns idle enforcement using monotonic time with a suspend/resume wall-clock backstop. Native minimize/focus policies, session clearing, remasking, toast clearing, authorization invalidation, and clipboard clearing are wired. |
 | Creation/recovery | Existing-vault overwrite is refused. Creation, schema migration, recovery unlock, and recovery-key replacement use a mandatory copy/save/print/verify/acknowledge ceremony and clear the key from the DOM. Recovery rotates both credentials. |
 | Vault metadata/KDF | Schema v2 authenticates purpose-specific canonical metadata as AEAD associated data, uses independent master/recovery KDF slots, validates nonce/ciphertext shape, and bounds Argon2 before work. Schema v1 migrates after authenticated unlock. |
+| Unlock responsiveness | Password-derived creation, unlock, recovery, regeneration, and rotation run on Tauri's dedicated blocking executor so strong KDF work does not freeze the webview animation/event loop. |
 | Vulnerable dependencies | Tauri/plist/quick-xml, anyhow, and rand are updated. `cargo-audit` is a pinned blocking CI gate; the current lock has no vulnerability-class findings. Unsuppressed transitive maintenance/unsoundness warnings are recorded in the threat model. |
 | File privacy/path handling | Durable per-user app data is required; shared-temp fallback was removed. Unix permissions are `0700`/`0600`, platform user-directory ACLs are inherited elsewhere, and vault/backup targets reject symlinks. |
 | Crash-safe persistence/restore | Saves use unique same-directory atomic writes, file sync, replacement, and parent-directory sync on Unix. Imports are bounded and authenticated, previewed first, atomic, session-locking, and retain a five-copy safety set. |
@@ -40,9 +41,14 @@ The expanded [threat model](./threat-model.md) defines assets, adversaries, boun
 - Added a default icon-and-label button system with encrypted settings for icon-only or label-only display, immediate painted unlock feedback, save-before-lock handling, simplified unclipped index rows, and matched search/counter control heights.
 - Kept navigation-menu labels visible in icon-only mode, added native label tooltips, replaced the Settings glyph with a recognizable gear, and removed redundant lock/unlock notifications.
 - Added save/discard/stay handling when switching Qi entries and encrypted three-mode Ring ordering: A–Z, Z–A, and persistent custom category/Qi order with mouse and keyboard reordering.
+- Focused the new-Qi Name field after unlock, set a stable 265 px minimum Ring width, centered category-chevron motion, and made category expansion state immune to detached native toggle events during Ring re-renders.
 - Rebalanced the 800 px master-detail grids and made range/icon action rows intrinsically shrinkable so editor controls remain inside their panes at the supported minimum window size.
+- Stacked username/password fields, Base32/TOTP output, and security-question controls at narrow widths; kept one-time codes and health action labels unbroken.
+- Restored a compact side-by-side TOTP layout at wider widths, constrained generator actions to their intrinsic size, contained health findings at 800 px, and added consistent in-app confirmation for Qi/profile deletion.
+- Consolidated module hierarchy around the shared accent-colored page title beside the logo, removed duplicate content headings from Health, Backups, Settings, and Help, and retained an in-app Help destination covering every page, setting, and keyboard route.
+- Added tag-aware free-text search and a populated exact-tag filter while retaining the full encrypted Ring catalog for stable filter options.
 - Added encrypted per-Qi image upload and direct favicon import with SSRF/redirect/size/type protections, plus icon rendering in the Ring index.
-- Added native window size/position persistence with current-monitor clamping and primary-display fallback when monitor topology or resolution changes.
+- Added native window size/position persistence with debounced writes during move/resize, a final close flush, current-monitor clamping, primary-display fallback when monitor topology or resolution changes, and explicit Linux `--x11`/`--wayland` launcher modes. Wayland restores size/maximized state while leaving absolute placement to the compositor; X11/XWayland supports exact saved-position restoration.
 - Added Settings, secure notes, encrypted password history, deletion undo, offline health, RFC 6238 TOTP with countdown/clock guidance, documented keyboard workflow, manual encrypted backups, automatic snapshots/retention, restore preview, master rotation, and recovery-key management.
 
 ## Architecture and test work
@@ -65,11 +71,11 @@ On clean Windows, macOS, and Linux test machines, verify installation/removal, r
 | --- | --- |
 | `cargo fmt --all -- --check` | Pass |
 | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | Pass |
-| `cargo test --workspace` | Pass: 38 tests |
+| `cargo test --workspace` | Pass: 39 tests |
 | `cargo check --manifest-path fuzz/Cargo.toml --all-targets` | Pass: four fuzz targets compile |
 | `npm run build` | Pass |
 | `npm run test:ui-contract` | Pass |
-| `npm run test:e2e` | Pass: 16 Playwright/axe flows |
+| `npm run test:e2e` | Pass: 24 Playwright/axe flows |
 | `npm audit --audit-level=moderate` | Pass: 0 vulnerabilities |
 | `cargo audit` | Pass: 0 vulnerability-class findings; 17 unsuppressed informational warnings documented in the threat model |
 | `cargo audit --no-fetch --file fuzz/Cargo.lock` | Pass |

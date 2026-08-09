@@ -14,12 +14,14 @@ Use `Ctrl` on Windows/Linux or `Command` on macOS:
 | `Ctrl/Command + Shift + U` | Copy the current username |
 | `Ctrl/Command + Shift + P` | Copy the current password |
 | `Ctrl/Command + L` | Lock the vault |
-| `Ctrl/Command + 1…5` | Switch between Vault, Profiles, Health, Backups, and Settings |
+| `Ctrl/Command + 1…6` | Switch between Vault, Profiles, Health, Backups, Settings, and Help |
 | `Escape` | Close the menu and remask the visible password |
 
 The unlock-method tabs support Left/Right, Home, and End. The application menu supports Up/Down, Home, End, and Escape.
 
 QiRing prompts to save, discard, or stay when you leave an edited screen, switch to another Qi, or manually lock the vault. Saving Settings before lock makes theme and button-display changes available after the next unlock.
+
+The in-app **Help** page explains every page and exposed setting, including password composition ranges, health findings, backup and restore behavior, session controls, snapshot retention, master-password rotation, recovery-key replacement, and keyboard shortcuts.
 
 ## Ring organization
 
@@ -27,11 +29,15 @@ The sort control above Ring search cycles through **Custom**, **A–Z**, and **Z
 
 In Custom mode, drag the grip beside a category or Qi to reorder it. Qi can be reordered within its current category; edit the Qi's Category field to move it to another category. Dragging is disabled while search is filtering the Ring and in A–Z or Z–A mode. For a keyboard alternative, focus a Qi grip and use Up/Down or Home/End; focus a category header and use Alt+Up/Down or Alt+Home/End.
 
+Ring search matches Qi names, usernames, notes, and tags. Use the **Tag** selector for an exact tag filter; **Clear** resets both the search text and tag filter. Category groups open automatically while either filter is active.
+
 ## Appearance and window placement
 
 Settings can show supported buttons as **Icon + label** (the default), **Icon only**, or **Label only**. Icon-only buttons retain accessible names and show their label as a hover tooltip. Navigation menu labels always remain visible so destinations do not become ambiguous.
 
-QiRing remembers the main window's last normal size, position, and maximized state. At startup it checks the current monitors, clamps the saved rectangle to an available display, and centers it on the primary display when the previous monitor is no longer present. This prevents a prior multi-monitor layout or resolution change from reopening the title bar off screen.
+QiRing remembers the main window's last normal size, position, and maximized state. Move and resize changes are saved after a half-second quiet period as well as during a normal close, so stopping a development launch from its terminal does not discard the latest settled geometry. At startup QiRing checks the current monitors, clamps the saved rectangle to an available display, and centers it on the primary display when the previous monitor is no longer present. This prevents a prior multi-monitor layout or resolution change from reopening the title bar off screen.
+
+On Linux Wayland, the desktop compositor intentionally controls absolute window placement. QiRing still restores size and maximized state, but the compositor may choose the opening position. Repository launches can opt into X11/XWayland for exact saved-position restoration with `./scripts/run-desktop.sh --x11`; `--wayland` explicitly retains native Wayland behavior. The launcher's default is `auto`, which respects the current session.
 
 ## Qi icons and favicons
 

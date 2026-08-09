@@ -28,7 +28,15 @@ On Linux, the launcher sets safe defaults for known WebKitGTK/GBM rendering issu
 - `WEBKIT_DISABLE_DMABUF_RENDERER=1`
 - `LIBGL_ALWAYS_SOFTWARE=1`
 
-If `DISPLAY` is not set, it probes `:0`, `:1`, `:2` and picks the first working X display.
+When X11 is requested and `DISPLAY` is not set, the launcher probes `:0`, `:1`, `:2` and picks the first working X display. In automatic mode it probes only when neither a Wayland nor X display is already available.
+
+The default `auto` backend respects the current Linux desktop session. Wayland restores the saved size and maximized state, but the compositor controls absolute placement. To restore the exact saved position, launch through X11/XWayland:
+
+```bash
+./scripts/run-desktop.sh --x11
+```
+
+Use `--wayland` to explicitly select Wayland, or set `QIRING_WINDOW_BACKEND=auto|x11|wayland`. The backend flags are consumed by the launcher and are not passed to Cargo.
 
 ## Current UI flow
 
