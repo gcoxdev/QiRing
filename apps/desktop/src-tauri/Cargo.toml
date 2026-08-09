@@ -9,16 +9,22 @@ name = "qiring_desktop"
 crate-type = ["cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.5.3", features = [] }
 
 [dependencies]
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tauri = { version = "2", features = [] }
+tauri = { version = "2.11.5", features = [] }
+tauri-plugin-clipboard-manager = "2.3.2"
+tauri-plugin-dialog = "2.7.2"
+tauri-plugin-opener = "2.5.4"
+url.workspace = true
 uuid.workspace = true
+zeroize.workspace = true
 qiring-core = { path = "../../../crates/qiring-core" }
+qiring-storage = { path = "../../../crates/qiring-storage" }
 
 [features]
 default = ["custom-protocol"]

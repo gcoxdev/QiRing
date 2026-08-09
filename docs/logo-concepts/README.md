@@ -1,8 +1,6 @@
 # QiRing Logo Concepts
 
-These are exploratory raster concepts generated for the project assessment. They are not final production icons. Before adopting one, redraw it as a clean SVG, create monochrome and high-contrast variants, test it at 16/20/24/32/48/128/512 px, and verify platform icon safe areas.
-
-The current `apps/desktop/src-tauri/icons/icon.png` is a blank dark-slate square and `bundle.icon` is empty, so none of these replaces an existing finished brand asset.
+These are the three exploratory raster concepts generated for the assessment. Concept 1 was selected and redrawn as a deterministic SVG using QiRing's production mint/slate palette.
 
 ## Concept 1 — Q Keyhole
 
@@ -30,7 +28,7 @@ Concentric broken arcs orbit a protected center while the outer break becomes a 
 
 ## Recommendation
 
-Advance Concepts 1 and 3 to a deterministic vector round. Concept 1 is strongest for immediate recognition; Concept 3 offers the most distinctive long-term brand system. At the next round, simplify both to one- and two-color SVGs before evaluating wordmarks, animation, or gradients.
+Concept 1 is now the adopted application mark. The production source is [`qiring-concept-1-production.svg`](./qiring-concept-1-production.svg); the same source is bundled in the frontend, and the complete Tauri desktop/mobile icon set was generated from Concept 1. Concepts 2 and 3 remain exploration only.
 
 **Generation method:** OpenAI built-in image generation tool.  
 **Files:** 1254 x 1254 PNG, RGB.

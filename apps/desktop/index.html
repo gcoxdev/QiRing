@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0a0e0d" />
+    <link rel="icon" href="/src/assets/qiring-mark.svg" type="image/svg+xml" />
+    <title>QiRing</title>
+  </head>
+  <body>
+    <div id="app" class="app-frame">
+      <main id="authShell" class="auth-shell">
+        <section class="auth-brand" aria-labelledby="authBrandTitle">
+          <img class="auth-mark" src="/src/assets/qiring-mark.svg" alt="" width="88" height="88" />
+          <h1 id="authBrandTitle">QiRing</h1>
+        </section>
+
+        <section id="createScreen" class="auth-panel" hidden aria-labelledby="createTitle">
+          <p class="section-code">01 / INITIALIZE</p>
+          <h2 id="createTitle">Create your vault</h2>
+          <p>Use a unique master password with at least 12 characters. It never leaves this device.</p>
+          <form id="createForm" class="stack-form">
+            <label for="createMaster">Master password</label>
+            <input id="createMaster" name="masterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
+            <label for="createConfirm">Confirm master password</label>
+            <input id="createConfirm" name="confirmPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
+            <button class="primary full" type="submit">Initialize encrypted vault</button>
+          </form>
+        </section>
+
+        <section id="unlockScreen" class="auth-panel" hidden aria-labelledby="unlockTitle">
+          <h2 id="unlockTitle" class="sr-only">Unlock QiRing</h2>
+          <div class="auth-tabs" role="tablist" aria-label="Unlock method">
+            <button id="masterTab" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="masterUnlockPanel">Master password</button>
+            <button id="recoveryTab" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="recoveryUnlockPanel">Recovery key</button>
+          </div>
+          <form id="masterUnlockPanel" class="stack-form" role="tabpanel" aria-labelledby="masterTab">
+            <label for="unlockMaster">Master password</label>
+            <input id="unlockMaster" type="password" minlength="12" maxlength="1024" autocomplete="current-password" required autofocus />
+            <button class="primary full" type="submit">Unlock vault</button>
+          </form>
+          <form id="recoveryUnlockPanel" class="stack-form" role="tabpanel" aria-labelledby="recoveryTab" hidden>
+            <label for="recoveryKey">Recovery key</label>
+            <input id="recoveryKey" type="password" maxlength="256" autocomplete="off" required />
+            <label for="recoveryMaster">New master password</label>
+            <input id="recoveryMaster" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
+            <label for="recoveryConfirm">Confirm new master password</label>
+            <input id="recoveryConfirm" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
+            <button class="primary full" type="submit">Recover and rotate credentials</button>
+          </form>
+        </section>
+      </main>
+
+      <section id="vaultShell" class="vault-shell" role="main" hidden aria-label="QiRing vault">
+        <header class="app-header">
+          <button id="brandHome" class="brand-button" type="button" aria-label="Open Qi Ring">
+            <img src="/src/assets/qiring-mark.svg" alt="" width="38" height="38" />
+            <strong>QiRing</strong>
+          </button>
+          <div class="header-location">
+            <h1 id="viewTitle" tabindex="-1">Qi Ring</h1>
+          </div>
+          <div class="header-controls">
+            <div id="contextActions" class="context-actions" aria-label="Page actions">
+              <button id="newAction" class="secondary" type="button">New Qi</button>
+              <button id="saveAction" class="primary" type="button">Save Qi</button>
+              <button id="deleteAction" class="danger" type="button">Delete Qi</button>
+            </div>
+            <div class="menu-wrap">
+              <button id="menuButton" class="icon-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Open navigation menu">MENU</button>
+              <nav id="appMenu" class="app-menu" aria-label="Vault navigation" hidden>
+                <button type="button" role="menuitem" data-view="qiring">Qi Ring <kbd>⌘1</kbd></button>
+                <button type="button" role="menuitem" data-view="profiles">Password Profiles <kbd>⌘2</kbd></button>
+                <button type="button" role="menuitem" data-view="health">Vault Health <kbd>⌘3</kbd></button>
+                <button type="button" role="menuitem" data-view="backups">Backups <kbd>⌘4</kbd></button>
+                <button type="button" role="menuitem" data-view="settings">Settings <kbd>⌘5</kbd></button>
+                <span class="menu-divider" role="separator"></span>
+                <button id="lockButton" class="lock-menu-item" type="button" role="menuitem">Lock vault <kbd>⌘L</kbd></button>
+              </nav>
+            </div>
+          </div>
+        </header>
+
+        <div class="workspace">
+          <section id="qiringView" class="view active-view" aria-labelledby="viewTitle">
+            <aside class="master-pane">
+              <div class="pane-heading">
+                <h2>Stored Qi</h2>
+                <span id="itemCount" class="count-badge">0</span>
+              </div>
+              <div class="search-row">
+                <label class="sr-only" for="searchInput">Search Qi</label>
+                <input id="searchInput" type="search" maxlength="256" placeholder="Search title, user, notes…" autocomplete="off" />
+                <button id="clearSearch" class="compact-button" type="button">Clear</button>
+              </div>
+              <div id="itemList" class="master-list" aria-label="Vault items"></div>
+            </aside>
+
+            <section class="detail-pane" aria-labelledby="itemEditorTitle">
+              <div class="detail-heading">
+                <h2 id="itemEditorTitle">New Qi</h2>
+                <span id="dirtyIndicator" class="dirty-indicator" hidden>UNSAVED</span>
+              </div>
+              <form id="itemForm" class="editor-form">
+                <div class="field-grid four">
+                  <div class="field span-2"><label for="itemTitle">Name</label><input id="itemTitle" maxlength="256" required /></div>
+                  <div class="field"><label for="itemType">Type</label><select id="itemType"><option value="login">Login</option><option value="secure_note">Secure note</option></select></div>
+                  <div class="field"><label for="itemFolder">Category</label><input id="itemFolder" maxlength="256" list="categoryOptions" /><datalist id="categoryOptions"></datalist></div>
+                </div>
+                <div class="field"><label for="itemTags">Tags <span>comma-separated</span></label><input id="itemTags" maxlength="2048" /></div>
+
+                <section id="credentialFields" class="editor-section" aria-labelledby="credentialTitle">
+                  <div class="section-heading"><h3 id="credentialTitle">Credentials</h3></div>
+                  <div class="field"><label for="itemUrl">Website</label><div class="inline-control"><input id="itemUrl" type="url" maxlength="4096" placeholder="https://example.com" /><button id="openUrlButton" class="secondary" type="button">Open</button></div></div>
+                  <div class="field-grid two">
+                    <div class="field"><label for="itemUsername">Username</label><div class="inline-control"><input id="itemUsername" maxlength="4096" autocomplete="off" /><button id="copyUsername" class="secondary" type="button">Copy</button></div></div>
+                    <div class="field"><label for="itemPassword">Password</label><div class="inline-control"><input id="itemPassword" type="password" maxlength="4096" autocomplete="off" /><button id="togglePassword" class="secondary" type="button" aria-pressed="false">Show</button><button id="copyPassword" class="secondary" type="button">Copy</button></div></div>
+                  </div>
+                  <div class="generator-strip">
+                    <div class="field"><label for="profileSelect">Password profile</label><select id="profileSelect"></select></div>
+                    <button id="generatePassword" class="primary" type="button">Generate password</button>
+                  </div>
+                  <div class="field-grid two">
+                    <div class="field"><label for="itemTotpSecret">TOTP secret <span>Base32</span></label><input id="itemTotpSecret" type="password" maxlength="1024" autocomplete="off" /></div>
+                    <div class="totp-display"><span>ONE-TIME CODE</span><strong id="totpCode">— — — — — —</strong><button id="refreshTotp" class="secondary" type="button">Show current code</button><small id="totpRemaining">Uses device time; verify automatic time if a code is rejected.</small></div>
+                  </div>
+                </section>
+
+                <section class="editor-section" aria-labelledby="notesTitle">
+                  <div class="section-heading"><h3 id="notesTitle">Secure content</h3></div>
+                  <div class="field"><label for="itemNotes">Notes</label><textarea id="itemNotes" rows="5" maxlength="100000"></textarea></div>
+                </section>
+
+                <section id="questionSection" class="editor-section" aria-labelledby="questionsTitle">
+                  <div class="section-heading"><h3 id="questionsTitle">Security questions</h3><button id="addQuestion" class="secondary compact" type="button">Add question</button></div>
+                  <div id="questionList" class="question-list"></div>
+                </section>
+
+                <section id="historySection" class="editor-section" hidden aria-labelledby="historyTitle">
+                  <div class="section-heading"><h3 id="historyTitle">Password history</h3></div>
+                  <div id="historyList" class="history-list"></div>
+                </section>
+              </form>
+            </section>
+          </section>
+
+          <section id="profilesView" class="view split-view" hidden aria-labelledby="profilesHeading">
+            <aside class="master-pane">
+              <div class="pane-heading"><div><span class="section-code">GENERATOR</span><h2 id="profilesHeading">Profiles</h2></div><span id="profileCount" class="count-badge">0</span></div>
+              <div id="profileList" class="master-list" aria-label="Password profiles"></div>
+            </aside>
+            <section class="detail-pane" aria-labelledby="profileEditorTitle">
+              <div class="detail-heading"><div><span class="section-code">COMPOSITION POLICY</span><h2 id="profileEditorTitle">New profile</h2></div><span id="profileDirtyIndicator" class="dirty-indicator" hidden>UNSAVED</span></div>
+              <form id="profileForm" class="editor-form">
+                <div class="field-grid two">
+                  <div class="field"><label for="profileName">Profile name</label><input id="profileName" maxlength="256" required /></div>
+                  <div class="field"><label for="profileLength">Total length</label><input id="profileLength" type="number" min="8" max="256" value="20" required /></div>
+                </div>
+                <p class="form-help">Set an allowed count range for each character group. The combined ranges must be able to fill the total length.</p>
+                <div class="range-table" role="group" aria-label="Character composition ranges">
+                  <div class="range-header"><span>Character group</span><span>Minimum</span><span>Maximum</span></div>
+                  <div class="range-row"><label for="upperMin">Uppercase A–Z</label><input id="upperMin" type="number" min="0" max="256" value="1" /><input id="upperMax" type="number" min="0" max="256" value="20" aria-label="Uppercase maximum" /></div>
+                  <div class="range-row"><label for="lowerMin">Lowercase a–z</label><input id="lowerMin" type="number" min="0" max="256" value="1" /><input id="lowerMax" type="number" min="0" max="256" value="20" aria-label="Lowercase maximum" /></div>
+                  <div class="range-row"><label for="numbersMin">Numbers 0–9</label><input id="numbersMin" type="number" min="0" max="256" value="1" /><input id="numbersMax" type="number" min="0" max="256" value="20" aria-label="Numbers maximum" /></div>
+                  <div class="range-row"><label for="symbolsMin">Symbols</label><input id="symbolsMin" type="number" min="0" max="256" value="1" /><input id="symbolsMax" type="number" min="0" max="256" value="20" aria-label="Symbols maximum" /></div>
+                </div>
+                <div class="field-grid two profile-advanced">
+                  <div class="field"><label for="allowedSymbols">Allowed symbols</label><input id="allowedSymbols" maxlength="128" value="!@#$%^&amp;*()-_=+[]{};:,.?/" /></div>
+                  <label class="check-row"><input id="avoidAmbiguous" type="checkbox" /><span>Avoid ambiguous characters such as I, l, 1, O, and 0</span></label>
+                </div>
+                <div class="profile-test"><button id="testProfile" class="secondary" type="button">Test profile</button><output id="profileTestOutput">Generated samples appear here.</output></div>
+              </form>
+            </section>
+          </section>
+
+          <section id="healthView" class="view module-view" hidden aria-labelledby="healthHeading">
+            <div class="module-heading"><div><span class="section-code">OFFLINE ANALYSIS</span><h2 id="healthHeading">Vault health</h2><p>Weak, reused, and old credentials are detected locally. No password or hash is sent over the network.</p></div><button id="runHealth" class="primary" type="button">Run analysis</button></div>
+            <div class="metric-grid"><div><span>ANALYZED</span><strong id="healthAnalyzed">—</strong></div><div><span>WEAK</span><strong id="healthWeak">—</strong></div><div><span>REUSED</span><strong id="healthReused">—</strong></div><div><span>OLD</span><strong id="healthOld">—</strong></div></div>
+            <div id="healthIssues" class="issue-list"><p class="empty-message">Run the offline analysis to inspect vault health.</p></div>
+          </section>
+
+          <section id="backupsView" class="view module-view" hidden aria-labelledby="backupsHeading">
+            <div class="module-heading"><div><span class="section-code">DISASTER RECOVERY</span><h2 id="backupsHeading">Encrypted backups</h2><p>Manual exports add a second passphrase layer. Automatic snapshots remain protected by the vault encryption.</p></div></div>
+            <div class="settings-grid">
+              <section class="settings-section"><h3>Manual export</h3><div class="field"><label for="backupPassphrase">Backup passphrase</label><input id="backupPassphrase" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /></div><button id="exportBackup" class="primary section-action" type="button">Choose destination and export</button></section>
+              <section class="settings-section"><h3>Restore preview</h3><button id="selectBackup" class="secondary" type="button">Choose encrypted backup</button><p id="selectedBackupPath" class="path-display">No backup selected.</p><div class="field"><label for="restorePassphrase">Backup passphrase</label><input id="restorePassphrase" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /></div><div class="button-row"><button id="previewBackup" class="secondary" type="button">Preview</button><button id="restoreBackup" class="danger" type="button" disabled>Restore previewed backup</button></div><div id="backupPreview" class="preview-box" hidden></div></section>
+            </div>
+            <section class="snapshot-section"><div class="section-heading"><h3>Automatic snapshots</h3><button id="refreshSnapshots" class="secondary compact" type="button">Refresh</button></div><div id="snapshotList" class="snapshot-list"><p class="empty-message">Configure automatic snapshots in Settings.</p></div></section>
+          </section>
+
+          <section id="settingsView" class="view module-view" hidden aria-labelledby="settingsHeading">
+            <div class="module-heading"><div><span class="section-code">VAULT POLICY</span><h2 id="settingsHeading">Settings</h2><p>Security controls are stored inside the encrypted vault and enforced by the Rust service.</p></div></div>
+            <form id="settingsForm" class="settings-grid">
+              <section class="settings-section"><h3>Session</h3><div class="field-grid two"><div class="field"><label for="autoLockMinutes">Auto-lock minutes</label><input id="autoLockMinutes" type="number" min="1" max="1440" required /></div><div class="field"><label for="clipboardSeconds">Clipboard clear seconds</label><input id="clipboardSeconds" type="number" min="5" max="300" required /></div></div><label class="check-row"><input id="lockOnMinimize" type="checkbox" /><span>Lock when the window is minimized</span></label><label class="check-row"><input id="lockOnBlur" type="checkbox" /><span>Lock when the window loses focus</span></label><div class="field"><label for="themeSelect">Theme</label><select id="themeSelect"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div></section>
+              <section class="settings-section"><h3>Automatic snapshots</h3><label class="check-row"><input id="automaticBackups" type="checkbox" /><span>Create a snapshot after vault changes</span></label><label class="check-row"><input id="includeSettings" type="checkbox" /><span>Include encrypted settings in manual exports</span></label><div class="field"><label for="backupRetention">Snapshots to retain</label><input id="backupRetention" type="number" min="1" max="100" required /></div><div class="field"><label for="backupDirectory">Backup directory</label><div class="inline-control"><input id="backupDirectory" readonly /><button id="chooseBackupDirectory" class="secondary" type="button">Choose</button></div></div></section>
+              <section class="settings-section"><h3>Master password</h3><div class="field"><label for="oldMasterPassword">Current master password</label><input id="oldMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /></div><div class="field"><label for="newMasterPassword">New master password</label><input id="newMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /></div><button id="rotateMaster" class="secondary section-action" type="button">Rotate master password</button></section>
+              <section class="settings-section"><h3>Recovery key</h3><p>Generate a replacement key after confirming your master password. The old recovery key stops working immediately.</p><div class="field"><label for="recoveryMasterPassword">Master password</label><input id="recoveryMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /></div><button id="regenerateRecovery" class="danger section-action" type="button">Replace recovery key</button></section>
+            </form>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <dialog id="recoveryDialog" class="recovery-dialog" aria-labelledby="recoveryDialogTitle">
+      <form method="dialog">
+        <span class="section-code">RECOVERY CEREMONY</span>
+        <h2 id="recoveryDialogTitle">Store this key offline</h2>
+        <p>This is the only recovery key for the new credential set. QiRing cannot retrieve it later.</p>
+        <div class="recovery-key-block"><code id="recoveryKeyOutput"></code><button id="copyRecoveryKey" class="secondary" type="button">Copy</button></div>
+        <div class="button-row recovery-output-actions"><button id="saveRecoveryKey" class="secondary" type="button">Save private text file</button><button id="printRecoveryKey" class="secondary" type="button">Print key</button></div>
+        <p>Fingerprint: <strong id="recoveryFingerprint"></strong></p>
+        <label for="recoveryVerify">Type the final six characters of the key</label>
+        <input id="recoveryVerify" maxlength="6" autocomplete="off" />
+        <label class="check-row"><input id="recoveryAcknowledged" type="checkbox" /><span>I stored this recovery key somewhere safe.</span></label>
+        <button id="finishRecovery" class="primary full" type="button" value="confirm" disabled>Continue</button>
+      </form>
+    </dialog>
+
+    <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="false"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

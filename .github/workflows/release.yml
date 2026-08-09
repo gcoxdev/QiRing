@@ -1,50 +1,252 @@
-name: release
+name: Release desktop bundles
 
 on:
   workflow_dispatch:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
 
 jobs:
-  build-desktop:
+  bundle:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+          - os: macos-15
+            platform: macos
+          - os: windows-2025
+            platform: windows
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+      LINUX_GPG_PRIVATE_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY }}
+      LINUX_GPG_KEY_ID: ${{ secrets.LINUX_GPG_KEY_ID }}
+      LINUX_GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux desktop dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Build desktop backend
-        run: cargo build -p qiring-desktop --release
-
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          name: qiring-${{ matrix.os }}
-          path: |
-            target/release/qiring-desktop*
-            target/release/libqiring_desktop*
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
 
-  publish-github-release:
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Require signing credentials for tagged releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: apps/desktop
+        run: node scripts/check-signing-env.mjs ${{ matrix.platform }}
+
+      - name: Import Linux AppImage signing key
+        if: matrix.platform == 'linux' && env.LINUX_GPG_PRIVATE_KEY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$LINUX_GPG_PRIVATE_KEY" | base64 --decode | gpg --batch --import
+          echo "SIGN=1" >> "$GITHUB_ENV"
+          echo "SIGN_KEY=$LINUX_GPG_KEY_ID" >> "$GITHUB_ENV"
+          echo "APPIMAGETOOL_SIGN_PASSPHRASE=$LINUX_GPG_PASSPHRASE" >> "$GITHUB_ENV"
+          echo "APPIMAGETOOL_FORCE_SIGN=1" >> "$GITHUB_ENV"
+
+      - name: Import Apple signing certificate
+        if: matrix.platform == 'macos' && env.APPLE_CERTIFICATE != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          certificate_path="$RUNNER_TEMP/qiring-certificate.p12"
+          keychain_path="$RUNNER_TEMP/qiring-build.keychain-db"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security default-keychain -s "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -t 3600 -u "$keychain_path"
+          security import "$certificate_path" -k "$keychain_path" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            identity="$(security find-identity -v -p codesigning "$keychain_path" | sed -n '1s/.*"\(.*\)".*/\1/p')"
+            test -n "$identity"
+            echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+          fi
+
+      - name: Prepare Apple notarization API key
+        if: matrix.platform == 'macos' && env.APPLE_API_PRIVATE_KEY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          printf '%s' "$APPLE_API_PRIVATE_KEY" > "$api_key_path"
+          chmod 600 "$api_key_path"
+          echo "APPLE_API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
+
+      - name: Import Windows signing certificate
+        if: matrix.platform == 'windows' && env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        run: |
+          $certificatePath = Join-Path $env:RUNNER_TEMP "qiring-certificate.pfx"
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+          $certificate = Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          if (-not $certificate) { throw "Windows signing certificate import failed." }
+          $configPath = Join-Path $env:RUNNER_TEMP "tauri.windows-signing.json"
+          @{
+            bundle = @{
+              windows = @{
+                certificateThumbprint = $certificate.Thumbprint
+                digestAlgorithm = "sha256"
+                timestampUrl = $env:WINDOWS_TIMESTAMP_URL
+              }
+            }
+          } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 $configPath
+          "TAURI_WINDOWS_CONFIG=$configPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run release tests
+        run: cargo test --workspace
+
+      - name: Build native installer bundles
+        if: matrix.platform != 'windows'
+        working-directory: apps/desktop
+        run: npm run tauri -- build
+
+      - name: Build Windows installer bundle
+        if: matrix.platform == 'windows'
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          if ($env:TAURI_WINDOWS_CONFIG) {
+            npm run tauri -- build --config $env:TAURI_WINDOWS_CONFIG
+          } else {
+            npm run tauri -- build
+          }
+
+      - name: Smoke test Linux installers
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(find target/release/bundle/appimage -type f -name '*.AppImage' -print -quit)"
+          deb="$(find target/release/bundle/deb -type f -name '*.deb' -print -quit)"
+          test -n "$appimage"
+          test -n "$deb"
+          smoke_dir="$(mktemp -d)"
+          chmod +x "$appimage"
+          (cd "$smoke_dir" && "$GITHUB_WORKSPACE/$appimage" --appimage-extract >/dev/null)
+          dpkg-deb --info "$deb" >/dev/null
+          dpkg-deb --extract "$deb" "$smoke_dir/deb"
+          if [ -n "${SIGN:-}" ]; then
+            test -n "$("$appimage" --appimage-signature)"
+          fi
+
+      - name: Smoke test macOS installer
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="$(find target/release/bundle/dmg -type f -name '*.dmg' -print -quit)"
+          test -n "$dmg"
+          hdiutil verify "$dmg"
+          test -d target/release/bundle/macos/QiRing.app
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            codesign --verify --deep --strict target/release/bundle/macos/QiRing.app
+            xcrun stapler validate target/release/bundle/macos/QiRing.app
+          fi
+
+      - name: Smoke test Windows installer
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem target/release/bundle/msi -Filter *.msi | Select-Object -First 1
+          if (-not $msi) { throw "No MSI bundle was produced." }
+          $destination = Join-Path $env:RUNNER_TEMP "qiring-msi-smoke"
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          $process = Start-Process msiexec.exe -ArgumentList @('/a', $msi.FullName, '/qn', "TARGETDIR=$destination") -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "MSI administrative install failed with exit code $($process.ExitCode)." }
+          if (-not (Get-ChildItem $destination -Filter *.exe -Recurse)) { throw "Installed MSI contains no executable." }
+          if ($env:WINDOWS_CERTIFICATE) {
+            $artifacts = @(Get-ChildItem target/release -Filter *.exe -File) + @(Get-ChildItem target/release/bundle/msi -Filter *.msi -File)
+            foreach ($artifact in $artifacts) {
+              $signature = Get-AuthenticodeSignature $artifact.FullName
+              if ($signature.Status -ne 'Valid') { throw "Invalid signature on $($artifact.FullName): $($signature.Status)" }
+            }
+          }
+
+      - name: Collect release assets
+        working-directory: apps/desktop
+        run: node scripts/collect-release.mjs ${{ matrix.platform }}
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .
+          format: spdx-json
+          output-file: apps/desktop/release-assets/qiring-${{ matrix.platform }}.spdx.json
+          upload-artifact: false
+
+      - name: Generate SHA-256 checksums
+        working-directory: apps/desktop
+        run: node scripts/checksums.mjs
+
+      - name: Attest release provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: apps/desktop/release-assets/*
+
+      - name: Upload platform artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qiring-${{ matrix.platform }}
+          path: apps/desktop/release-assets/*
+          if-no-files-found: error
+
+  publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-desktop]
-    runs-on: ubuntu-latest
+    needs: bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      - name: Download verified platform artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          path: release-artifacts
+          pattern: qiring-*
+          path: release-assets
+          merge-multiple: true
 
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: release-artifacts/**
-          generate_release_notes: true
+      - name: Create GitHub release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --generate-notes --verify-tag
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber

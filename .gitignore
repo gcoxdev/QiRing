@@ -6,4 +6,6 @@ node_modules
 .idea
 *.log
 apps/desktop/src-tauri/gen
+apps/desktop/test-results/
+apps/desktop/playwright-report/
 /graphify-out/

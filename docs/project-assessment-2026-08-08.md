@@ -1,5 +1,7 @@
 # QiRing Project Assessment
 
+> This is the original point-in-time assessment. Its actionable items, except the three ideas explicitly listed under **Later, after the security boundary is hardened**, were implemented in the [assessment remediation record](./assessment-remediation-2026-08-08.md).
+
 **Assessment date:** 2026-08-08  
 **Scope:** Current repository, desktop UI, Tauri command boundary, cryptography and storage code, automated checks, release workflow, and product opportunities.  
 **Assessment type:** Engineering review, not a formal cryptographic audit or penetration test.
@@ -351,4 +353,3 @@ Add these before release:
 - [Web Interface Guidelines](https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md)
 - `docs/threat-model.md`
 - `graphify-out/GRAPH_REPORT.md`
-

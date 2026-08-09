@@ -1,0 +1,41 @@
+[package]
+name = "qiring-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+qiring-storage = { path = "../crates/qiring-storage" }
+qiring-core = { path = "../crates/qiring-core" }
+
+[[bin]]
+name = "parse_vault"
+path = "fuzz_targets/parse_vault.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_backup"
+path = "fuzz_targets/parse_backup.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_profile"
+path = "fuzz_targets/parse_profile.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_item"
+path = "fuzz_targets/parse_item.rs"
+test = false
+doc = false
+bench = false

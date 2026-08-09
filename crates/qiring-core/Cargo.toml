@@ -7,11 +7,14 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
+data-encoding.workspace = true
+hmac.workspace = true
 rand.workspace = true
-rand_chacha.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha1.workspace = true
 thiserror.workspace = true
+url.workspace = true
 uuid.workspace = true
 zeroize.workspace = true
 qiring-crypto = { path = "../qiring-crypto" }

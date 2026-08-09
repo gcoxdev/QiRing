@@ -3,902 +3,222 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0a0e0d" />
+    <link rel="icon" href="/assets/qiring-mark-n8nzoMEu.svg" type="image/svg+xml" />
     <title>QiRing</title>
-    <style>
-      :root {
-        --bg: #0e141b;
-        --panel: #1b2530;
-        --ink: #edf4fa;
-        --muted: #9bb0c4;
-        --line: #324251;
-        --accent: #ff9f1c;
-        --danger: #c74646;
-        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        background:
-          radial-gradient(900px 450px at 100% 0%, #30465b60, transparent 60%),
-          radial-gradient(650px 450px at 0% 100%, #5a3b2038, transparent 60%),
-          var(--bg);
-        color: var(--ink);
-      }
-      .app { max-width: 1260px; margin: 0 auto; padding: 18px; }
-      .topbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 12px;
-      }
-      .title { margin: 0; letter-spacing: 0.04em; }
-      .status {
-        margin: 0 0 12px;
-        padding: 8px 10px;
-        border: 1px solid #2f455b;
-        border-radius: 8px;
-        background: #203043;
-        color: #cfe0ee;
-        min-height: 22px;
-      }
-      .status.error {
-        background: #3d2323;
-        border-color: #6a3b3b;
-        color: #ffd8d8;
-      }
-      .panel {
-        background: linear-gradient(180deg, #202c39, var(--panel));
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 12px;
-      }
-      .hidden { display: none !important; }
-      .menu-wrap { position: relative; }
-      .menu-dropdown {
-        position: absolute;
-        top: 40px;
-        right: 0;
-        min-width: 280px;
-        z-index: 20;
-      }
-      .menu-group { border-top: 1px solid #33485d; padding-top: 8px; margin-top: 8px; }
-      .menu-title { font-size: 0.82rem; color: var(--muted); margin-bottom: 6px; }
-      .menu-btn { width: 100%; margin-top: 6px; text-align: left; }
-      .auth {
-        max-width: 460px;
-        margin: 0 auto;
-      }
-      label { font-size: 0.85rem; color: var(--muted); display: block; margin-top: 8px; }
-      input, textarea, select {
-        width: 100%;
-        margin-top: 4px;
-        padding: 8px 9px;
-        border: 1px solid #405364;
-        border-radius: 8px;
-        background: #121a22;
-        color: var(--ink);
-      }
-      textarea { min-height: 92px; }
-      button {
-        border: 0;
-        border-radius: 8px;
-        padding: 8px 11px;
-        cursor: pointer;
-        background: var(--accent);
-        color: #221300;
-        font-weight: 700;
-      }
-      button.secondary { background: #2a3c4f; color: #d5e4f2; }
-      button.danger { background: var(--danger); color: #fff; }
-      button.ghost { background: #213042; color: #cfe0ee; }
-      .workspace { display: grid; gap: 12px; }
-      .workspace.view-vertical-1,
-      .workspace.view-vertical-2 { grid-template-columns: 1fr; }
-      .workspace.view-horizontal-1,
-      .workspace.view-horizontal-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .workspace.view-compact { grid-template-columns: 1fr; }
-      .pane {
-        min-height: 620px;
-        height: 620px;
-        overflow: auto;
-      }
-      .ring { order: 1; }
-      .qi { order: 2; }
-      .view-vertical-2 .qi,
-      .view-horizontal-1 .qi,
-      .view-compact .qi { order: 1; }
-      .view-vertical-2 .ring,
-      .view-horizontal-1 .ring,
-      .view-compact .ring { order: 2; }
-      .compact-switch {
-        display: none;
-        gap: 8px;
-        margin-bottom: 8px;
-      }
-      .view-compact .compact-switch { display: flex; }
-      .view-compact .ring,
-      .view-compact .qi { display: none; }
-      .view-compact.show-ring .ring,
-      .view-compact.show-qi .qi { display: block; }
-      .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
-      .tab-btn.active,
-      .compact-btn.active { outline: 2px solid #ffb54d; }
-      .tab-pane { display: none; }
-      .tab-pane.active { display: block; }
-      .ring-search {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 8px;
-        margin-bottom: 10px;
-      }
-      details.category { margin-bottom: 8px; border: 1px solid #3b4f63; border-radius: 8px; padding: 6px; background: #16212b; }
-      details.category > summary { cursor: pointer; font-weight: 700; }
-      .qi-link {
-        display: block;
-        width: 100%;
-        text-align: left;
-        background: #223242;
-        color: #e4eef7;
-        border: 1px solid #3c5165;
-        margin-top: 6px;
-      }
-      .qi-link.active { outline: 2px solid #ffb54d; }
-      .inline-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-      .grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-      .question-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr auto auto;
-        gap: 6px;
-        margin-top: 6px;
-      }
-      .profile-item {
-        border: 1px solid #3a4f63;
-        border-radius: 8px;
-        background: #16202a;
-        padding: 8px;
-        margin-top: 8px;
-      }
-      .small { color: var(--muted); font-size: 0.82rem; }
-      @media (max-width: 1080px) {
-        .workspace.view-horizontal-1,
-        .workspace.view-horizontal-2,
-        .grid-two { grid-template-columns: 1fr; }
-      }
-    </style>
+    <script type="module" crossorigin src="/assets/index-sf1V0h7A.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B_kxFFe7.css">
   </head>
   <body>
-    <main class="app">
-      <section class="topbar">
-        <h1 class="title">QiRing</h1>
-        <div class="menu-wrap">
-          <button class="secondary" id="menuBtn">Menu</button>
-          <div id="menuPanel" class="menu-dropdown panel hidden">
-            <button class="menu-btn secondary" id="menuOpenQiRing">Open QiRing</button>
-            <button class="menu-btn secondary" id="menuOpenProfiles">Manage Password Profiles</button>
-            <div class="menu-group">
-              <div class="menu-title">View Mode</div>
-              <button class="menu-btn ghost" data-view="vertical-1">Vertical 1 (Ring above Qi)</button>
-              <button class="menu-btn ghost" data-view="vertical-2">Vertical 2 (Qi above Ring)</button>
-              <button class="menu-btn ghost" data-view="horizontal-1">Horizontal 1 (Qi left, Ring right)</button>
-              <button class="menu-btn ghost" data-view="horizontal-2">Horizontal 2 (Ring left, Qi right)</button>
-              <button class="menu-btn ghost" data-view="compact">Compact (Qi/Ring tabs)</button>
+    <div id="app" class="app-frame">
+      <main id="authShell" class="auth-shell">
+        <section class="auth-brand" aria-labelledby="authBrandTitle">
+          <img class="auth-mark" src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20128%20128'%20role='img'%20aria-labelledby='title'%3e%3ctitle%20id='title'%3eQiRing%20Q%20keyhole%20mark%3c/title%3e%3crect%20width='128'%20height='128'%20rx='22'%20fill='%230a0e0d'/%3e%3cg%20fill='%239df7c7'%20stroke='%239df7c7'%20stroke-linecap='round'%20stroke-linejoin='round'%3e%3ccircle%20cx='64'%20cy='61.5'%20r='29'%20fill='none'%20stroke-width='10'/%3e%3cpath%20d='M86%2083.5%20107%20104.5'%20fill='none'%20stroke-width='10'/%3e%3ccircle%20cx='64'%20cy='61.5'%20r='8.5'%20stroke='none'/%3e%3cpath%20d='m59%2067-3.7%2024h17.4L69%2067Z'%20stroke='none'/%3e%3c/g%3e%3cpath%20d='M57%2045.5c4.5-2.4%209.5-2.4%2014%200'%20fill='none'%20stroke='%23eef6f1'%20stroke-width='4.5'%20stroke-linecap='round'/%3e%3c/svg%3e" alt="" width="88" height="88" />
+          <h1 id="authBrandTitle">QiRing</h1>
+        </section>
+
+        <section id="createScreen" class="auth-panel" hidden aria-labelledby="createTitle">
+          <p class="section-code">01 / INITIALIZE</p>
+          <h2 id="createTitle">Create your vault</h2>
+          <p>Use a unique master password with at least 12 characters. It never leaves this device.</p>
+          <form id="createForm" class="stack-form">
+            <label for="createMaster">Master password</label>
+            <input id="createMaster" name="masterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
+            <label for="createConfirm">Confirm master password</label>
+            <input id="createConfirm" name="confirmPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
+            <button class="primary full" type="submit">Initialize encrypted vault</button>
+          </form>
+        </section>
+
+        <section id="unlockScreen" class="auth-panel" hidden aria-labelledby="unlockTitle">
+          <h2 id="unlockTitle" class="sr-only">Unlock QiRing</h2>
+          <div class="auth-tabs" role="tablist" aria-label="Unlock method">
+            <button id="masterTab" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="masterUnlockPanel">Master password</button>
+            <button id="recoveryTab" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="recoveryUnlockPanel">Recovery key</button>
+          </div>
+          <form id="masterUnlockPanel" class="stack-form" role="tabpanel" aria-labelledby="masterTab">
+            <label for="unlockMaster">Master password</label>
+            <input id="unlockMaster" type="password" minlength="12" maxlength="1024" autocomplete="current-password" required autofocus />
+            <button class="primary full" type="submit">Unlock vault</button>
+          </form>
+          <form id="recoveryUnlockPanel" class="stack-form" role="tabpanel" aria-labelledby="recoveryTab" hidden>
+            <label for="recoveryKey">Recovery key</label>
+            <input id="recoveryKey" type="password" maxlength="256" autocomplete="off" required />
+            <label for="recoveryMaster">New master password</label>
+            <input id="recoveryMaster" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
+            <label for="recoveryConfirm">Confirm new master password</label>
+            <input id="recoveryConfirm" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
+            <button class="primary full" type="submit">Recover and rotate credentials</button>
+          </form>
+        </section>
+      </main>
+
+      <section id="vaultShell" class="vault-shell" role="main" hidden aria-label="QiRing vault">
+        <header class="app-header">
+          <button id="brandHome" class="brand-button" type="button" aria-label="Open Qi Ring">
+            <img src="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20128%20128'%20role='img'%20aria-labelledby='title'%3e%3ctitle%20id='title'%3eQiRing%20Q%20keyhole%20mark%3c/title%3e%3crect%20width='128'%20height='128'%20rx='22'%20fill='%230a0e0d'/%3e%3cg%20fill='%239df7c7'%20stroke='%239df7c7'%20stroke-linecap='round'%20stroke-linejoin='round'%3e%3ccircle%20cx='64'%20cy='61.5'%20r='29'%20fill='none'%20stroke-width='10'/%3e%3cpath%20d='M86%2083.5%20107%20104.5'%20fill='none'%20stroke-width='10'/%3e%3ccircle%20cx='64'%20cy='61.5'%20r='8.5'%20stroke='none'/%3e%3cpath%20d='m59%2067-3.7%2024h17.4L69%2067Z'%20stroke='none'/%3e%3c/g%3e%3cpath%20d='M57%2045.5c4.5-2.4%209.5-2.4%2014%200'%20fill='none'%20stroke='%23eef6f1'%20stroke-width='4.5'%20stroke-linecap='round'/%3e%3c/svg%3e" alt="" width="38" height="38" />
+            <strong>QiRing</strong>
+          </button>
+          <div class="header-location">
+            <h1 id="viewTitle" tabindex="-1">Qi Ring</h1>
+          </div>
+          <div class="header-controls">
+            <div id="contextActions" class="context-actions" aria-label="Page actions">
+              <button id="newAction" class="secondary" type="button">New Qi</button>
+              <button id="saveAction" class="primary" type="button">Save Qi</button>
+              <button id="deleteAction" class="danger" type="button">Delete Qi</button>
+            </div>
+            <div class="menu-wrap">
+              <button id="menuButton" class="icon-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Open navigation menu">MENU</button>
+              <nav id="appMenu" class="app-menu" aria-label="Vault navigation" hidden>
+                <button type="button" role="menuitem" data-view="qiring">Qi Ring <kbd>⌘1</kbd></button>
+                <button type="button" role="menuitem" data-view="profiles">Password Profiles <kbd>⌘2</kbd></button>
+                <button type="button" role="menuitem" data-view="health">Vault Health <kbd>⌘3</kbd></button>
+                <button type="button" role="menuitem" data-view="backups">Backups <kbd>⌘4</kbd></button>
+                <button type="button" role="menuitem" data-view="settings">Settings <kbd>⌘5</kbd></button>
+                <span class="menu-divider" role="separator"></span>
+                <button id="lockButton" class="lock-menu-item" type="button" role="menuitem">Lock vault <kbd>⌘L</kbd></button>
+              </nav>
             </div>
           </div>
-        </div>
-      </section>
+        </header>
 
-      <div id="status" class="status">Ready</div>
+        <div class="workspace">
+          <section id="qiringView" class="view active-view" aria-labelledby="viewTitle">
+            <aside class="master-pane">
+              <div class="pane-heading">
+                <h2>Stored Qi</h2>
+                <span id="itemCount" class="count-badge">0</span>
+              </div>
+              <div class="search-row">
+                <label class="sr-only" for="searchInput">Search Qi</label>
+                <input id="searchInput" type="search" maxlength="256" placeholder="Search title, user, notes…" autocomplete="off" />
+                <button id="clearSearch" class="compact-button" type="button">Clear</button>
+              </div>
+              <div id="itemList" class="master-list" aria-label="Vault items"></div>
+            </aside>
 
-      <section id="createScreen" class="auth panel hidden">
-        <h3>Create Vault</h3>
-        <label>Master Password<input id="createMaster" type="password" placeholder="At least 12 characters" /></label>
-        <button id="createBtn">Create Vault</button>
-        <p id="recoveryText" class="small"></p>
-      </section>
+            <section class="detail-pane" aria-labelledby="itemEditorTitle">
+              <div class="detail-heading">
+                <h2 id="itemEditorTitle">New Qi</h2>
+                <span id="dirtyIndicator" class="dirty-indicator" hidden>UNSAVED</span>
+              </div>
+              <form id="itemForm" class="editor-form">
+                <div class="field-grid four">
+                  <div class="field span-2"><label for="itemTitle">Name</label><input id="itemTitle" maxlength="256" required /></div>
+                  <div class="field"><label for="itemType">Type</label><select id="itemType"><option value="login">Login</option><option value="secure_note">Secure note</option></select></div>
+                  <div class="field"><label for="itemFolder">Category</label><input id="itemFolder" maxlength="256" list="categoryOptions" /><datalist id="categoryOptions"></datalist></div>
+                </div>
+                <div class="field"><label for="itemTags">Tags <span>comma-separated</span></label><input id="itemTags" maxlength="2048" /></div>
 
-      <section id="unlockScreen" class="auth panel hidden">
-        <h3>Unlock Vault</h3>
-        <label>Master Password<input id="unlockMaster" type="password" placeholder="Existing password" /></label>
-        <button id="unlockBtn">Unlock</button>
-      </section>
+                <section id="credentialFields" class="editor-section" aria-labelledby="credentialTitle">
+                  <div class="section-heading"><h3 id="credentialTitle">Credentials</h3></div>
+                  <div class="field"><label for="itemUrl">Website</label><div class="inline-control"><input id="itemUrl" type="url" maxlength="4096" placeholder="https://example.com" /><button id="openUrlButton" class="secondary" type="button">Open</button></div></div>
+                  <div class="field-grid two">
+                    <div class="field"><label for="itemUsername">Username</label><div class="inline-control"><input id="itemUsername" maxlength="4096" autocomplete="off" /><button id="copyUsername" class="secondary" type="button">Copy</button></div></div>
+                    <div class="field"><label for="itemPassword">Password</label><div class="inline-control"><input id="itemPassword" type="password" maxlength="4096" autocomplete="off" /><button id="togglePassword" class="secondary" type="button" aria-pressed="false">Show</button><button id="copyPassword" class="secondary" type="button">Copy</button></div></div>
+                  </div>
+                  <div class="generator-strip">
+                    <div class="field"><label for="profileSelect">Password profile</label><select id="profileSelect"></select></div>
+                    <button id="generatePassword" class="primary" type="button">Generate password</button>
+                  </div>
+                  <div class="field-grid two">
+                    <div class="field"><label for="itemTotpSecret">TOTP secret <span>Base32</span></label><input id="itemTotpSecret" type="password" maxlength="1024" autocomplete="off" /></div>
+                    <div class="totp-display"><span>ONE-TIME CODE</span><strong id="totpCode">— — — — — —</strong><button id="refreshTotp" class="secondary" type="button">Show current code</button><small id="totpRemaining">Uses device time; verify automatic time if a code is rejected.</small></div>
+                  </div>
+                </section>
 
-      <section id="workspace" class="workspace view-horizontal-2 show-ring hidden">
-        <div class="compact-switch">
-          <button id="compactQiBtn" class="compact-btn secondary">Qi</button>
-          <button id="compactRingBtn" class="compact-btn secondary active">Ring</button>
-        </div>
+                <section class="editor-section" aria-labelledby="notesTitle">
+                  <div class="section-heading"><h3 id="notesTitle">Secure content</h3></div>
+                  <div class="field"><label for="itemNotes">Notes</label><textarea id="itemNotes" rows="5" maxlength="100000"></textarea></div>
+                </section>
 
-        <article class="pane panel ring" id="ringPane">
-          <h2>Ring</h2>
-          <div class="ring-search">
-            <input id="searchInput" type="text" placeholder="Search Qi" />
-            <button class="ghost" id="clearSearchBtn">X</button>
-          </div>
-          <div id="ringList"></div>
-        </article>
+                <section id="questionSection" class="editor-section" aria-labelledby="questionsTitle">
+                  <div class="section-heading"><h3 id="questionsTitle">Security questions</h3><button id="addQuestion" class="secondary compact" type="button">Add question</button></div>
+                  <div id="questionList" class="question-list"></div>
+                </section>
 
-        <article class="pane panel qi" id="qiPane">
-          <h2>Qi</h2>
-          <div class="tabs">
-            <button class="tab-btn active secondary" data-tab="info">Info</button>
-            <button class="tab-btn secondary" data-tab="key">Key</button>
-            <button class="tab-btn secondary" data-tab="questions">Questions</button>
-          </div>
+                <section id="historySection" class="editor-section" hidden aria-labelledby="historyTitle">
+                  <div class="section-heading"><h3 id="historyTitle">Password history</h3></div>
+                  <div id="historyList" class="history-list"></div>
+                </section>
+              </form>
+            </section>
+          </section>
 
-          <section class="tab-pane active" id="tab-info">
-            <label>Category
-              <input id="qiCategory" list="categoryList" placeholder="Choose or type a new category" />
-              <datalist id="categoryList"></datalist>
-            </label>
-            <label>Qi Name<input id="qiName" type="text" placeholder="Entry title" /></label>
-            <label>Tags<input id="qiTags" type="text" placeholder="tag1,tag2" /></label>
-            <label>URL<input id="qiUrl" type="url" placeholder="https://..." /></label>
-            <div class="inline-actions">
-              <button id="openUrlBtn">Open URL</button>
+          <section id="profilesView" class="view split-view" hidden aria-labelledby="profilesHeading">
+            <aside class="master-pane">
+              <div class="pane-heading"><div><span class="section-code">GENERATOR</span><h2 id="profilesHeading">Profiles</h2></div><span id="profileCount" class="count-badge">0</span></div>
+              <div id="profileList" class="master-list" aria-label="Password profiles"></div>
+            </aside>
+            <section class="detail-pane" aria-labelledby="profileEditorTitle">
+              <div class="detail-heading"><div><span class="section-code">COMPOSITION POLICY</span><h2 id="profileEditorTitle">New profile</h2></div><span id="profileDirtyIndicator" class="dirty-indicator" hidden>UNSAVED</span></div>
+              <form id="profileForm" class="editor-form">
+                <div class="field-grid two">
+                  <div class="field"><label for="profileName">Profile name</label><input id="profileName" maxlength="256" required /></div>
+                  <div class="field"><label for="profileLength">Total length</label><input id="profileLength" type="number" min="8" max="256" value="20" required /></div>
+                </div>
+                <p class="form-help">Set an allowed count range for each character group. The combined ranges must be able to fill the total length.</p>
+                <div class="range-table" role="group" aria-label="Character composition ranges">
+                  <div class="range-header"><span>Character group</span><span>Minimum</span><span>Maximum</span></div>
+                  <div class="range-row"><label for="upperMin">Uppercase A–Z</label><input id="upperMin" type="number" min="0" max="256" value="1" /><input id="upperMax" type="number" min="0" max="256" value="20" aria-label="Uppercase maximum" /></div>
+                  <div class="range-row"><label for="lowerMin">Lowercase a–z</label><input id="lowerMin" type="number" min="0" max="256" value="1" /><input id="lowerMax" type="number" min="0" max="256" value="20" aria-label="Lowercase maximum" /></div>
+                  <div class="range-row"><label for="numbersMin">Numbers 0–9</label><input id="numbersMin" type="number" min="0" max="256" value="1" /><input id="numbersMax" type="number" min="0" max="256" value="20" aria-label="Numbers maximum" /></div>
+                  <div class="range-row"><label for="symbolsMin">Symbols</label><input id="symbolsMin" type="number" min="0" max="256" value="1" /><input id="symbolsMax" type="number" min="0" max="256" value="20" aria-label="Symbols maximum" /></div>
+                </div>
+                <div class="field-grid two profile-advanced">
+                  <div class="field"><label for="allowedSymbols">Allowed symbols</label><input id="allowedSymbols" maxlength="128" value="!@#$%^&amp;*()-_=+[]{};:,.?/" /></div>
+                  <label class="check-row"><input id="avoidAmbiguous" type="checkbox" /><span>Avoid ambiguous characters such as I, l, 1, O, and 0</span></label>
+                </div>
+                <div class="profile-test"><button id="testProfile" class="secondary" type="button">Test profile</button><output id="profileTestOutput">Generated samples appear here.</output></div>
+              </form>
+            </section>
+          </section>
+
+          <section id="healthView" class="view module-view" hidden aria-labelledby="healthHeading">
+            <div class="module-heading"><div><span class="section-code">OFFLINE ANALYSIS</span><h2 id="healthHeading">Vault health</h2><p>Weak, reused, and old credentials are detected locally. No password or hash is sent over the network.</p></div><button id="runHealth" class="primary" type="button">Run analysis</button></div>
+            <div class="metric-grid"><div><span>ANALYZED</span><strong id="healthAnalyzed">—</strong></div><div><span>WEAK</span><strong id="healthWeak">—</strong></div><div><span>REUSED</span><strong id="healthReused">—</strong></div><div><span>OLD</span><strong id="healthOld">—</strong></div></div>
+            <div id="healthIssues" class="issue-list"><p class="empty-message">Run the offline analysis to inspect vault health.</p></div>
+          </section>
+
+          <section id="backupsView" class="view module-view" hidden aria-labelledby="backupsHeading">
+            <div class="module-heading"><div><span class="section-code">DISASTER RECOVERY</span><h2 id="backupsHeading">Encrypted backups</h2><p>Manual exports add a second passphrase layer. Automatic snapshots remain protected by the vault encryption.</p></div></div>
+            <div class="settings-grid">
+              <section class="settings-section"><h3>Manual export</h3><div class="field"><label for="backupPassphrase">Backup passphrase</label><input id="backupPassphrase" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /></div><button id="exportBackup" class="primary section-action" type="button">Choose destination and export</button></section>
+              <section class="settings-section"><h3>Restore preview</h3><button id="selectBackup" class="secondary" type="button">Choose encrypted backup</button><p id="selectedBackupPath" class="path-display">No backup selected.</p><div class="field"><label for="restorePassphrase">Backup passphrase</label><input id="restorePassphrase" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /></div><div class="button-row"><button id="previewBackup" class="secondary" type="button">Preview</button><button id="restoreBackup" class="danger" type="button" disabled>Restore previewed backup</button></div><div id="backupPreview" class="preview-box" hidden></div></section>
             </div>
+            <section class="snapshot-section"><div class="section-heading"><h3>Automatic snapshots</h3><button id="refreshSnapshots" class="secondary compact" type="button">Refresh</button></div><div id="snapshotList" class="snapshot-list"><p class="empty-message">Configure automatic snapshots in Settings.</p></div></section>
           </section>
 
-          <section class="tab-pane" id="tab-key">
-            <label>Username<input id="qiUsername" type="text" /></label>
-            <div class="inline-actions"><button class="secondary" id="copyUsernameBtn">Copy Username</button></div>
-
-            <label>Password<input id="qiPassword" type="password" /></label>
-            <div class="inline-actions">
-              <button class="secondary" id="copyPasswordBtn">Copy Password</button>
-              <button class="secondary" id="togglePasswordBtn">Show</button>
-              <select id="profileSelect"></select>
-              <button id="genFromProfileBtn">Generate</button>
-            </div>
-
-            <label>Notes<textarea id="qiNotes" placeholder="General notes"></textarea></label>
+          <section id="settingsView" class="view module-view" hidden aria-labelledby="settingsHeading">
+            <div class="module-heading"><div><span class="section-code">VAULT POLICY</span><h2 id="settingsHeading">Settings</h2><p>Security controls are stored inside the encrypted vault and enforced by the Rust service.</p></div></div>
+            <form id="settingsForm" class="settings-grid">
+              <section class="settings-section"><h3>Session</h3><div class="field-grid two"><div class="field"><label for="autoLockMinutes">Auto-lock minutes</label><input id="autoLockMinutes" type="number" min="1" max="1440" required /></div><div class="field"><label for="clipboardSeconds">Clipboard clear seconds</label><input id="clipboardSeconds" type="number" min="5" max="300" required /></div></div><label class="check-row"><input id="lockOnMinimize" type="checkbox" /><span>Lock when the window is minimized</span></label><label class="check-row"><input id="lockOnBlur" type="checkbox" /><span>Lock when the window loses focus</span></label><div class="field"><label for="themeSelect">Theme</label><select id="themeSelect"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div></section>
+              <section class="settings-section"><h3>Automatic snapshots</h3><label class="check-row"><input id="automaticBackups" type="checkbox" /><span>Create a snapshot after vault changes</span></label><label class="check-row"><input id="includeSettings" type="checkbox" /><span>Include encrypted settings in manual exports</span></label><div class="field"><label for="backupRetention">Snapshots to retain</label><input id="backupRetention" type="number" min="1" max="100" required /></div><div class="field"><label for="backupDirectory">Backup directory</label><div class="inline-control"><input id="backupDirectory" readonly /><button id="chooseBackupDirectory" class="secondary" type="button">Choose</button></div></div></section>
+              <section class="settings-section"><h3>Master password</h3><div class="field"><label for="oldMasterPassword">Current master password</label><input id="oldMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /></div><div class="field"><label for="newMasterPassword">New master password</label><input id="newMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /></div><button id="rotateMaster" class="secondary section-action" type="button">Rotate master password</button></section>
+              <section class="settings-section"><h3>Recovery key</h3><p>Generate a replacement key after confirming your master password. The old recovery key stops working immediately.</p><div class="field"><label for="recoveryMasterPassword">Master password</label><input id="recoveryMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /></div><button id="regenerateRecovery" class="danger section-action" type="button">Replace recovery key</button></section>
+            </form>
           </section>
-
-          <section class="tab-pane" id="tab-questions">
-            <div id="questionRows"></div>
-            <div class="inline-actions"><button id="addQuestionBtn">Add Question</button></div>
-          </section>
-
-          <div class="inline-actions">
-            <button id="newQiBtn">New Qi</button>
-            <button id="saveQiBtn">Save Qi</button>
-            <button class="danger" id="deleteQiBtn">Delete Qi</button>
-            <button class="secondary" id="lockBtn">Lock Vault</button>
-          </div>
-        </article>
+        </div>
       </section>
-
-      <section id="profilesScreen" class="panel hidden">
-        <h2>Password Profiles</h2>
-        <p class="small">Profiles are used from Qi > Key tab password generation.</p>
-
-        <div class="grid-two">
-          <label>Profile<select id="profilesList"></select></label>
-          <label>Profile Name<input id="profileName" type="text" /></label>
-        </div>
-
-        <div class="grid-two">
-          <label>Length<input id="profileLength" type="number" min="8" value="20" /></label>
-          <div></div>
-        </div>
-
-        <div class="grid-two">
-          <label><input id="profileUpper" type="checkbox" checked /> Include upper</label>
-          <label><input id="profileLower" type="checkbox" checked /> Include lower</label>
-        </div>
-        <div class="grid-two">
-          <label><input id="profileNumbers" type="checkbox" checked /> Include numbers</label>
-          <label><input id="profileSymbols" type="checkbox" checked /> Include symbols</label>
-        </div>
-
-        <div class="inline-actions">
-          <button id="newProfileBtn">New Profile</button>
-          <button id="saveProfileBtn">Save Profile</button>
-          <button class="danger" id="deleteProfileBtn">Delete Profile</button>
-        </div>
-
-        <div id="profilesSummary"></div>
-      </section>
-    </main>
-
-    <script>
-      const NOTES_PREFIX = "QIRING_META_V1:";
-      const PROFILE_KEY = "qiring.passwordProfiles";
-
-      const state = {
-        selectedId: null,
-        items: [],
-        search: "",
-        activeTab: "info",
-        view: "horizontal-2",
-        compactPane: "ring",
-        clipboardSeconds: 30,
-        profiles: [],
-        selectedProfileId: null
-      };
-
-      const statusEl = document.getElementById("status");
-      const createScreenEl = document.getElementById("createScreen");
-      const unlockScreenEl = document.getElementById("unlockScreen");
-      const workspaceEl = document.getElementById("workspace");
-      const profilesScreenEl = document.getElementById("profilesScreen");
-      const ringListEl = document.getElementById("ringList");
-      const categoryListEl = document.getElementById("categoryList");
-      const questionRowsEl = document.getElementById("questionRows");
-      const menuPanelEl = document.getElementById("menuPanel");
-
-      function setStatus(message, error = false) {
-        statusEl.textContent = message;
-        statusEl.className = `status${error ? " error" : ""}`;
-      }
-
-      function invoke(command, args = {}) {
-        if (!window.__TAURI__?.core?.invoke) throw new Error("Tauri bridge unavailable");
-        return window.__TAURI__.core.invoke(command, args);
-      }
-
-      function parseTags(raw) {
-        return String(raw || "").split(",").map((x) => x.trim()).filter(Boolean);
-      }
-
-      function escapeHtml(value) {
-        return String(value ?? "")
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;")
-          .replaceAll("'", "&#039;");
-      }
-
-      function encodeNotesPayload(notes, questions) {
-        return `${NOTES_PREFIX}${JSON.stringify({ notes: notes || "", questions: questions || [] })}`;
-      }
-
-      function decodeNotesPayload(raw) {
-        if (!raw) return { notes: "", questions: [] };
-        if (!String(raw).startsWith(NOTES_PREFIX)) return { notes: String(raw), questions: [] };
-        try {
-          const parsed = JSON.parse(String(raw).slice(NOTES_PREFIX.length));
-          return {
-            notes: parsed.notes || "",
-            questions: Array.isArray(parsed.questions) ? parsed.questions : []
-          };
-        } catch (_) {
-          return { notes: String(raw), questions: [] };
-        }
-      }
-
-      function setScreen(name) {
-        createScreenEl.classList.toggle("hidden", name !== "create");
-        unlockScreenEl.classList.toggle("hidden", name !== "unlock");
-        workspaceEl.classList.toggle("hidden", name !== "qiring");
-        profilesScreenEl.classList.toggle("hidden", name !== "profiles");
-      }
-
-      function updateViewMode() {
-        workspaceEl.className = `workspace view-${state.view} show-${state.compactPane}`;
-        document.querySelectorAll(".compact-btn").forEach((el) => el.classList.remove("active"));
-        if (state.compactPane === "qi") document.getElementById("compactQiBtn").classList.add("active");
-        if (state.compactPane === "ring") document.getElementById("compactRingBtn").classList.add("active");
-      }
-
-      function setActiveTab(tab) {
-        state.activeTab = tab;
-        document.querySelectorAll(".tab-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === tab));
-        document.querySelectorAll(".tab-pane").forEach((pane) => pane.classList.toggle("active", pane.id === `tab-${tab}`));
-      }
-
-      function addQuestionRow(question = "", answer = "") {
-        const row = document.createElement("div");
-        row.className = "question-row";
-        row.innerHTML = `
-          <input class="q-question" type="text" placeholder="Question" value="${escapeHtml(question)}" />
-          <input class="q-answer" type="text" placeholder="Answer" value="${escapeHtml(answer)}" />
-          <button class="secondary q-copy">Copy</button>
-          <button class="danger q-remove">Remove</button>
-        `;
-        questionRowsEl.appendChild(row);
-      }
-
-      function collectQuestions() {
-        return Array.from(questionRowsEl.querySelectorAll(".question-row"))
-          .map((row) => ({
-            question: row.querySelector(".q-question").value.trim(),
-            answer: row.querySelector(".q-answer").value
-          }))
-          .filter((qa) => qa.question || qa.answer);
-      }
-
-      function clearQiForm() {
-        state.selectedId = null;
-        document.getElementById("qiCategory").value = "";
-        document.getElementById("qiName").value = "";
-        document.getElementById("qiTags").value = "";
-        document.getElementById("qiUrl").value = "";
-        document.getElementById("qiUsername").value = "";
-        document.getElementById("qiPassword").value = "";
-        document.getElementById("qiNotes").value = "";
-        questionRowsEl.innerHTML = "";
-        renderRing();
-      }
-
-      async function copyWithTimeout(value) {
-        if (!value) throw new Error("No value to copy");
-        await navigator.clipboard.writeText(value);
-        const ms = Math.max(1, Number(state.clipboardSeconds || 30)) * 1000;
-        setTimeout(async () => {
-          try { await navigator.clipboard.writeText(""); } catch (_) {}
-        }, ms);
-      }
-
-      async function loadSecurityStatus() {
-        try {
-          const sec = await invoke("get_security_status");
-          state.clipboardSeconds = sec.clipboard_clear_seconds || 30;
-        } catch (_) {
-          state.clipboardSeconds = 30;
-        }
-      }
-
-      async function refreshItems() {
-        state.items = await invoke("list_items", { filter: { query: state.search || null } });
-        renderRing();
-        renderCategoryList();
-      }
-
-      function renderCategoryList() {
-        const categories = new Set();
-        state.items.forEach((item) => { if (item.folder) categories.add(item.folder); });
-        categoryListEl.innerHTML = Array.from(categories)
-          .sort((a, b) => a.localeCompare(b))
-          .map((c) => `<option value="${escapeHtml(c)}"></option>`)
-          .join("");
-      }
-
-      function renderRing() {
-        const grouped = new Map();
-        state.items.forEach((item) => {
-          const cat = item.folder || "Uncategorized";
-          if (!grouped.has(cat)) grouped.set(cat, []);
-          grouped.get(cat).push(item);
-        });
-
-        const categories = Array.from(grouped.keys()).sort((a, b) => a.localeCompare(b));
-        if (!categories.length) {
-          ringListEl.innerHTML = '<p class="small">No Qi entries yet.</p>';
-          return;
-        }
-
-        ringListEl.innerHTML = categories
-          .map((cat) => {
-            const items = grouped.get(cat).sort((a, b) => a.title.localeCompare(b.title));
-            return `
-              <details class="category" open>
-                <summary>${escapeHtml(cat)}</summary>
-                ${items
-                  .map((item) => {
-                    const activeClass = item.id === state.selectedId ? "active" : "";
-                    return `<button class="qi-link ${activeClass}" data-select-id="${item.id}">${escapeHtml(item.title)}</button>`;
-                  })
-                  .join("")}
-              </details>
-            `;
-          })
-          .join("");
-      }
-
-      async function selectQi(id) {
-        const item = await invoke("get_item", { itemId: id });
-        state.selectedId = id;
-        const decoded = decodeNotesPayload(item.notes);
-        document.getElementById("qiCategory").value = item.folder || "";
-        document.getElementById("qiName").value = item.title || "";
-        document.getElementById("qiTags").value = (item.tags || []).join(",");
-        document.getElementById("qiUrl").value = item.url || "";
-        document.getElementById("qiUsername").value = item.username || "";
-        document.getElementById("qiPassword").value = item.password || "";
-        document.getElementById("qiNotes").value = decoded.notes || "";
-        questionRowsEl.innerHTML = "";
-        (decoded.questions || []).forEach((qa) => addQuestionRow(qa.question || "", qa.answer || ""));
-        renderRing();
-      }
-
-      function loadProfiles() {
-        try {
-          const parsed = JSON.parse(localStorage.getItem(PROFILE_KEY) || "[]");
-          state.profiles = Array.isArray(parsed) ? parsed : [];
-        } catch (_) {
-          state.profiles = [];
-        }
-
-        if (!state.profiles.length) {
-          state.profiles = [{
-            id: crypto.randomUUID(),
-            name: "Strong 20",
-            length: 20,
-            include_upper: true,
-            include_lower: true,
-            include_numbers: true,
-            include_symbols: true
-          }];
-          localStorage.setItem(PROFILE_KEY, JSON.stringify(state.profiles));
-        }
-
-        state.selectedProfileId = state.profiles[0]?.id || null;
-        renderProfiles();
-      }
-
-      function persistProfiles() {
-        localStorage.setItem(PROFILE_KEY, JSON.stringify(state.profiles));
-      }
-
-      function renderProfiles() {
-        const qiSelect = document.getElementById("profileSelect");
-        const screenSelect = document.getElementById("profilesList");
-        const options = state.profiles.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
-        qiSelect.innerHTML = options;
-        screenSelect.innerHTML = options;
-        if (state.selectedProfileId) {
-          qiSelect.value = state.selectedProfileId;
-          screenSelect.value = state.selectedProfileId;
-          fillProfileForm();
-        }
-        document.getElementById("profilesSummary").innerHTML = state.profiles
-          .map((p) => `<div class="profile-item">${escapeHtml(p.name)} - length ${p.length}</div>`)
-          .join("");
-      }
-
-      function currentProfile() {
-        return state.profiles.find((p) => p.id === state.selectedProfileId) || null;
-      }
-
-      function fillProfileForm() {
-        const profile = currentProfile();
-        if (!profile) return;
-        document.getElementById("profileName").value = profile.name;
-        document.getElementById("profileLength").value = profile.length;
-        document.getElementById("profileUpper").checked = !!profile.include_upper;
-        document.getElementById("profileLower").checked = !!profile.include_lower;
-        document.getElementById("profileNumbers").checked = !!profile.include_numbers;
-        document.getElementById("profileSymbols").checked = !!profile.include_symbols;
-      }
-
-      function profileFromForm() {
-        return {
-          name: document.getElementById("profileName").value.trim(),
-          length: Number(document.getElementById("profileLength").value || 20),
-          include_upper: document.getElementById("profileUpper").checked,
-          include_lower: document.getElementById("profileLower").checked,
-          include_numbers: document.getElementById("profileNumbers").checked,
-          include_symbols: document.getElementById("profileSymbols").checked
-        };
-      }
-
-      async function saveQi() {
-        const title = document.getElementById("qiName").value.trim();
-        if (!title) throw new Error("Qi Name is required");
-
-        const category = document.getElementById("qiCategory").value.trim();
-        const tags = parseTags(document.getElementById("qiTags").value);
-        const url = document.getElementById("qiUrl").value.trim();
-        const username = document.getElementById("qiUsername").value;
-        const password = document.getElementById("qiPassword").value;
-        const notes = document.getElementById("qiNotes").value;
-        const encodedNotes = encodeNotesPayload(notes, collectQuestions());
-
-        if (state.selectedId) {
-          await invoke("update_item", {
-            itemId: state.selectedId,
-            patch: {
-              title,
-              username: username || null,
-              password: password || null,
-              url: url || null,
-              notes: encodedNotes,
-              tags,
-              folder: category || null
-            }
-          });
-        } else {
-          const newId = await invoke("add_item", {
-            input: {
-              item_type: "login",
-              title,
-              username: username || null,
-              password: password || null,
-              url: url || null,
-              notes: encodedNotes,
-              tags,
-              folder: category || null
-            }
-          });
-          state.selectedId = newId;
-        }
-
-        await refreshItems();
-        setStatus("Qi saved.");
-      }
-
-      async function deleteQi() {
-        if (!state.selectedId) throw new Error("No Qi selected");
-        const confirmed = window.confirm("Delete this Qi permanently?");
-        if (!confirmed) return;
-        await invoke("delete_item", { itemId: state.selectedId });
-        clearQiForm();
-        await refreshItems();
-        setStatus("Qi deleted.");
-      }
-
-      document.getElementById("menuBtn").addEventListener("click", () => {
-        menuPanelEl.classList.toggle("hidden");
-      });
-
-      document.getElementById("menuOpenQiRing").addEventListener("click", () => {
-        setScreen("qiring");
-        menuPanelEl.classList.add("hidden");
-      });
-
-      document.getElementById("menuOpenProfiles").addEventListener("click", () => {
-        setScreen("profiles");
-        menuPanelEl.classList.add("hidden");
-      });
-
-      document.querySelectorAll("[data-view]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          state.view = btn.dataset.view;
-          updateViewMode();
-          setScreen("qiring");
-          menuPanelEl.classList.add("hidden");
-        });
-      });
-
-      document.addEventListener("click", (event) => {
-        if (!event.target.closest(".menu-wrap")) menuPanelEl.classList.add("hidden");
-      });
-
-      document.getElementById("compactQiBtn" ).addEventListener("click", () => {
-        state.compactPane = "qi";
-        updateViewMode();
-      });
-
-      document.getElementById("compactRingBtn").addEventListener("click", () => {
-        state.compactPane = "ring";
-        updateViewMode();
-      });
-
-      document.querySelectorAll(".tab-btn").forEach((btn) => {
-        btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
-      });
-
-      document.getElementById("createBtn").addEventListener("click", async () => {
-        try {
-          const masterPassword = document.getElementById("createMaster").value;
-          const result = await invoke("create_vault", {
-            masterPassword,
-            settings: {
-              auto_lock_minutes: 5,
-              clipboard_clear_seconds: 30,
-              biometric_enabled: true,
-              theme: "system",
-              backup_preferences: { include_settings: true }
-            }
-          });
-          document.getElementById("recoveryText").textContent = `Recovery key: ${result.recovery.recovery_key}`;
-          setScreen("unlock");
-          setStatus("Vault created. Now unlock it.");
-        } catch (err) {
-          setStatus(`Create failed: ${err}`, true);
-        }
-      });
-
-      document.getElementById("unlockBtn").addEventListener("click", async () => {
-        try {
-          const masterPassword = document.getElementById("unlockMaster").value;
-          await invoke("unlock_vault_master", { masterPassword });
-          await Promise.all([loadSecurityStatus(), refreshItems()]);
-          setScreen("qiring");
-          updateViewMode();
-          setStatus("Vault unlocked.");
-        } catch (err) {
-          setStatus(`Unlock failed: ${err}`, true);
-        }
-      });
-
-      document.getElementById("lockBtn").addEventListener("click", async () => {
-        try {
-          await invoke("lock_vault");
-          clearQiForm();
-          ringListEl.innerHTML = "";
-          setScreen("unlock");
-          setStatus("Vault locked.");
-        } catch (err) {
-          setStatus(`Lock failed: ${err}`, true);
-        }
-      });
-
-      document.getElementById("searchInput").addEventListener("input", async (e) => {
-        state.search = e.target.value.trim();
-        await refreshItems();
-      });
-
-      document.getElementById("clearSearchBtn").addEventListener("click", async () => {
-        document.getElementById("searchInput").value = "";
-        state.search = "";
-        await refreshItems();
-      });
-
-      ringListEl.addEventListener("click", async (event) => {
-        const btn = event.target.closest("[data-select-id]");
-        if (!btn) return;
-        try {
-          await selectQi(btn.dataset.selectId);
-          setStatus("Qi loaded.");
-        } catch (err) {
-          setStatus(`Load failed: ${err}`, true);
-        }
-      });
-
-      document.getElementById("newQiBtn").addEventListener("click", () => {
-        clearQiForm();
-        setActiveTab("info");
-        setStatus("New Qi form ready.");
-      });
-
-      document.getElementById("saveQiBtn").addEventListener("click", async () => {
-        try {
-          await saveQi();
-        } catch (err) {
-          setStatus(`Save failed: ${err}`, true);
-        }
-      });
-
-      document.getElementById("deleteQiBtn").addEventListener("click", async () => {
-        try {
-          await deleteQi();
-        } catch (err) {
-          setStatus(`Delete failed: ${err}`, true);
-        }
-      });
-
-      document.getElementById("openUrlBtn").addEventListener("click", async () => {
-        try {
-          const url = document.getElementById("qiUrl").value.trim();
-          if (!url) throw new Error("URL is empty");
-          await invoke("open_url", { url });
-          setActiveTab("key");
-          setStatus("URL opened.");
-        } catch (err) {
-          setStatus(`Open URL failed: ${err}`, true);
-        }
-      });
-
-      document.getElementById("copyUsernameBtn").addEventListener("click", async () => {
-        try {
-          await copyWithTimeout(document.getElementById("qiUsername").value);
-          setStatus(`Username copied. Clipboard clears in ${state.clipboardSeconds}s.`);
-        } catch (err) {
-          setStatus(`Copy failed: ${err}`, true);
-        }
-      });
-
-      document.getElementById("copyPasswordBtn").addEventListener("click", async () => {
-        try {
-          await copyWithTimeout(document.getElementById("qiPassword").value);
-          setStatus(`Password copied. Clipboard clears in ${state.clipboardSeconds}s.`);
-        } catch (err) {
-          setStatus(`Copy failed: ${err}`, true);
-        }
-      });
-
-      document.getElementById("togglePasswordBtn").addEventListener("click", () => {
-        const input = document.getElementById("qiPassword");
-        const btn = document.getElementById("togglePasswordBtn");
-        const show = input.type === "password";
-        input.type = show ? "text" : "password";
-        btn.textContent = show ? "Hide" : "Show";
-      });
-
-      document.getElementById("profileSelect").addEventListener("change", (e) => {
-        state.selectedProfileId = e.target.value;
-        document.getElementById("profilesList").value = state.selectedProfileId;
-        fillProfileForm();
-      });
-
-      document.getElementById("genFromProfileBtn").addEventListener("click", async () => {
-        try {
-          const profile = currentProfile();
-          if (!profile) throw new Error("Select a profile");
-          const result = await invoke("generate_password", { policy: profile });
-          document.getElementById("qiPassword").value = result.value;
-          setStatus(`Password generated from profile '${profile.name}'.`);
-        } catch (err) {
-          setStatus(`Generate failed: ${err}`, true);
-        }
-      });
-
-      document.getElementById("addQuestionBtn").addEventListener("click", () => addQuestionRow());
-
-      questionRowsEl.addEventListener("click", async (event) => {
-        const row = event.target.closest(".question-row");
-        if (!row) return;
-        if (event.target.classList.contains("q-remove")) row.remove();
-        if (event.target.classList.contains("q-copy")) {
-          try {
-            await copyWithTimeout(row.querySelector(".q-answer").value);
-            setStatus(`Answer copied. Clipboard clears in ${state.clipboardSeconds}s.`);
-          } catch (err) {
-            setStatus(`Copy failed: ${err}`, true);
-          }
-        }
-      });
-
-      document.getElementById("profilesList").addEventListener("change", (e) => {
-        state.selectedProfileId = e.target.value;
-        document.getElementById("profileSelect").value = state.selectedProfileId;
-        fillProfileForm();
-      });
-
-      document.getElementById("newProfileBtn").addEventListener("click", () => {
-        state.selectedProfileId = null;
-        document.getElementById("profileName").value = "";
-        document.getElementById("profileLength").value = "20";
-        document.getElementById("profileUpper").checked = true;
-        document.getElementById("profileLower").checked = true;
-        document.getElementById("profileNumbers").checked = true;
-        document.getElementById("profileSymbols").checked = true;
-      });
-
-      document.getElementById("saveProfileBtn").addEventListener("click", () => {
-        try {
-          const profile = profileFromForm();
-          if (!profile.name) throw new Error("Profile name is required");
-          if (profile.length < 8) throw new Error("Length must be >= 8");
-          if (state.selectedProfileId) {
-            state.profiles = state.profiles.map((p) => (p.id === state.selectedProfileId ? { ...p, ...profile } : p));
-          } else {
-            const id = crypto.randomUUID();
-            state.selectedProfileId = id;
-            state.profiles.push({ id, ...profile });
-          }
-          persistProfiles();
-          renderProfiles();
-          setStatus("Profile saved.");
-        } catch (err) {
-          setStatus(`Profile save failed: ${err}`, true);
-        }
-      });
-
-      document.getElementById("deleteProfileBtn").addEventListener("click", () => {
-        try {
-          if (!state.selectedProfileId) throw new Error("No profile selected");
-          const confirmed = window.confirm("Delete this password profile?");
-          if (!confirmed) return;
-          state.profiles = state.profiles.filter((p) => p.id !== state.selectedProfileId);
-          state.selectedProfileId = state.profiles[0]?.id || null;
-          persistProfiles();
-          renderProfiles();
-          setStatus("Profile deleted.");
-        } catch (err) {
-          setStatus(`Profile delete failed: ${err}`, true);
-        }
-      });
-
-      async function bootstrap() {
-        try {
-          loadProfiles();
-          setActiveTab("info");
-          updateViewMode();
-
-          const exists = await invoke("vault_exists");
-          setScreen(exists ? "unlock" : "create");
-          setStatus(exists ? "Vault found. Unlock to continue." : "Create your vault to begin.");
-        } catch (err) {
-          setStatus(`Startup failed: ${err}`, true);
-          setScreen("create");
-        }
-      }
-
-      bootstrap();
-    </script>
+    </div>
+
+    <dialog id="recoveryDialog" class="recovery-dialog" aria-labelledby="recoveryDialogTitle">
+      <form method="dialog">
+        <span class="section-code">RECOVERY CEREMONY</span>
+        <h2 id="recoveryDialogTitle">Store this key offline</h2>
+        <p>This is the only recovery key for the new credential set. QiRing cannot retrieve it later.</p>
+        <div class="recovery-key-block"><code id="recoveryKeyOutput"></code><button id="copyRecoveryKey" class="secondary" type="button">Copy</button></div>
+        <div class="button-row recovery-output-actions"><button id="saveRecoveryKey" class="secondary" type="button">Save private text file</button><button id="printRecoveryKey" class="secondary" type="button">Print key</button></div>
+        <p>Fingerprint: <strong id="recoveryFingerprint"></strong></p>
+        <label for="recoveryVerify">Type the final six characters of the key</label>
+        <input id="recoveryVerify" maxlength="6" autocomplete="off" />
+        <label class="check-row"><input id="recoveryAcknowledged" type="checkbox" /><span>I stored this recovery key somewhere safe.</span></label>
+        <button id="finishRecovery" class="primary full" type="button" value="confirm" disabled>Continue</button>
+      </form>
+    </dialog>
+
+    <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="false"></div>
   </body>
 </html>

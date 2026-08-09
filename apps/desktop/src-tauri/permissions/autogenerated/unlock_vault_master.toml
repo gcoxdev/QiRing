@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-unlock-vault-master"
+description = "Enables the unlock_vault_master command without any pre-configured scope."
+commands.allow = ["unlock_vault_master"]
+
+[[permission]]
+identifier = "deny-unlock-vault-master"
+description = "Denies the unlock_vault_master command without any pre-configured scope."
+commands.deny = ["unlock_vault_master"]
