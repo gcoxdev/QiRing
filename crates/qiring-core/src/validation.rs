@@ -1,4 +1,5 @@
 use crate::{AppSettings, CoreError, ItemInput, ItemPatch, PasswordProfile, SecurityQuestion};
+use data_encoding::BASE64;
 use std::collections::HashSet;
 
 const MAX_MASTER_PASSWORD_BYTES: usize = 1024;
@@ -158,10 +159,14 @@ fn validate_icon_data_url(value: &Option<String>) -> anyhow::Result<()> {
     if value.len() > MAX_ICON_DATA_URL_CHARS {
         return Err(CoreError::InvalidInput("Qi icon exceeds the supported 512 KiB size".into()).into());
     }
-    let payload = ICON_DATA_URL_PREFIXES
+    let (media_type, payload) = ICON_DATA_URL_PREFIXES
         .iter()
-        .find_map(|prefix| value.strip_prefix(prefix))
-        .filter(|payload| !payload.is_empty())
+        .find_map(|prefix| {
+            value
+                .strip_prefix(prefix)
+                .map(|payload| (media_type_for_prefix(prefix), payload))
+        })
+        .filter(|(_, payload)| !payload.is_empty())
         .ok_or_else(|| {
             CoreError::InvalidInput("Qi icon must be a PNG, JPEG, WebP, GIF, or ICO image".into())
         })?;
@@ -171,7 +176,46 @@ fn validate_icon_data_url(value: &Option<String>) -> anyhow::Result<()> {
     {
         return Err(CoreError::InvalidInput("Qi icon contains invalid image data".into()).into());
     }
+    let decoded = BASE64
+        .decode(payload.as_bytes())
+        .map_err(|_| CoreError::InvalidInput("Qi icon contains invalid image data".into()))?;
+    if sniff_image_media_type(&decoded) != Some(media_type) {
+        return Err(CoreError::InvalidInput(
+            "Qi icon data does not match a PNG, JPEG, WebP, GIF, or ICO image".into(),
+        )
+        .into());
+    }
     Ok(())
+}
+
+fn media_type_for_prefix(prefix: &str) -> &'static str {
+    match prefix {
+        "data:image/png;base64," => "image/png",
+        "data:image/jpeg;base64," => "image/jpeg",
+        "data:image/webp;base64," => "image/webp",
+        "data:image/gif;base64," => "image/gif",
+        "data:image/x-icon;base64," => "image/x-icon",
+        _ => unreachable!("prefix list and media type mapping must stay in sync"),
+    }
+}
+
+/// Detects a supported image container from its leading magic bytes. Shared
+/// by icon-data-url validation and the desktop favicon/upload import paths so
+/// every entry point enforces the same format guarantee.
+pub fn sniff_image_media_type(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else if bytes.starts_with(&[0, 0, 1, 0]) {
+        Some("image/x-icon")
+    } else {
+        None
+    }
 }
 
 fn validate_tags(tags: &[String]) -> anyhow::Result<()> {

@@ -172,9 +172,32 @@ pub fn save_encrypted_vault(path: &Path, vault: &EncryptedVault) -> anyhow::Resu
     save_bytes_atomic(path, &json)
 }
 
+/// Writes `bytes` atomically to `path`, forcing the parent directory to be
+/// private (`0700` on Unix). Use this only for QiRing-owned app-data paths
+/// (the vault file, its window-state sibling, and internal safety-snapshot
+/// directories) — never for a directory the user selected themselves, since
+/// silently narrowing its permissions is a surprising side effect on a
+/// location the user may share with other tools or users.
 pub fn save_bytes_atomic(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     let parent = path.parent().context("vault path must have parent directory")?;
     ensure_private_directory(parent)?;
+    save_bytes_atomic_at_existing_directory(path, bytes)
+}
+
+/// Writes `bytes` atomically to `path` without changing the permissions of
+/// the parent directory. Use this for files written into a directory the
+/// user chose explicitly (backup exports, automatic snapshots, the recovery
+/// key text file). The parent directory is created if missing but its mode
+/// is left as the filesystem default; the written file itself is still
+/// restricted to the current user (`0600` on Unix).
+pub fn save_bytes_atomic_user_directory(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+    let parent = path.parent().context("path must have parent directory")?;
+    fs::create_dir_all(parent).context("failed to create backup directory")?;
+    save_bytes_atomic_at_existing_directory(path, bytes)
+}
+
+fn save_bytes_atomic_at_existing_directory(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+    let parent = path.parent().context("vault path must have parent directory")?;
     reject_symlink(path)?;
 
     let mut options = AtomicWriteFile::options();

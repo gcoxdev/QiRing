@@ -8,6 +8,7 @@ pub use model::*;
 pub use passwords::generate_password_value;
 pub use service::{validate_backup_envelope_bytes, VaultService};
 pub use totp::generate_totp_code;
+pub use validation::sniff_image_media_type;
 
 pub const COMMAND_VERSION: &str = "4";
 

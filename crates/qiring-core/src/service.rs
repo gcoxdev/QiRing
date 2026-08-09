@@ -16,8 +16,8 @@ use qiring_crypto::{
 use qiring_storage::{
     decrypt_legacy_vault_payload, decrypt_vault_payload, encrypt_vault_payload, load_encrypted_vault,
     load_vault_file, metadata_aad, new_metadata, parse_vault_bytes, read_bounded, save_bytes_atomic,
-    save_encrypted_vault, EncryptedVault, KdfSlot, LegacyEncryptedVault, VaultFile, VaultMetadata,
-    WrappedKeys,
+    save_bytes_atomic_user_directory, save_encrypted_vault, EncryptedVault, KdfSlot, LegacyEncryptedVault,
+    VaultFile, VaultMetadata, WrappedKeys,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -685,7 +685,7 @@ impl VaultService {
         if serialized.len() as u64 > MAX_BACKUP_FILE_BYTES {
             return Err(CoreError::InvalidInput("backup is too large".into()).into());
         }
-        save_bytes_atomic(path, &serialized)?;
+        save_bytes_atomic_user_directory(path, &serialized)?;
         Ok(BackupManifest {
             path: path.display().to_string(),
             created_at: metadata.created_at,
@@ -747,6 +747,14 @@ impl VaultService {
         }
         let bytes = read_bounded(path.as_ref(), qiring_storage::MAX_VAULT_FILE_BYTES)?;
         let (vault_id, _, schema_version) = vault_identity(&bytes)?;
+        let current_bytes = read_bounded(&self.vault_path, qiring_storage::MAX_VAULT_FILE_BYTES)?;
+        let (current_vault_id, _, _) = vault_identity(&current_bytes)?;
+        if vault_id != current_vault_id {
+            return Err(CoreError::InvalidInput(
+                "snapshot belongs to a different vault; restore refused".into(),
+            )
+            .into());
+        }
         let safety_snapshot_path = self.write_pre_restore_snapshot()?;
         save_bytes_atomic(&self.vault_path, &bytes)?;
         self.lock_vault();
@@ -870,7 +878,7 @@ impl VaultService {
             Uuid::new_v4().simple()
         );
         let bytes = read_bounded(&self.vault_path, qiring_storage::MAX_VAULT_FILE_BYTES)?;
-        save_bytes_atomic(&Path::new(directory).join(filename), &bytes)?;
+        save_bytes_atomic_user_directory(&Path::new(directory).join(filename), &bytes)?;
         prune_snapshots(preferences)
     }
 
@@ -1496,6 +1504,43 @@ mod tests {
         for snapshot in snapshots {
             assert!(qiring_storage::load_vault_file(Path::new(&snapshot.path)).is_ok());
         }
+    }
+
+    #[test]
+    fn restore_snapshot_rejects_a_snapshot_from_a_different_vault() {
+        let (directory, mut service) = test_service();
+        let backup_directory = directory.path().join("snapshots");
+        let mut settings = AppSettings::default();
+        settings.backup_preferences.directory = Some(backup_directory.display().to_string());
+        service.create_vault(MASTER, settings.clone()).expect("create");
+        service.unlock_vault_master(MASTER).expect("unlock");
+        service.add_item(login("Current", "secret-value")).expect("add");
+
+        let (foreign_directory, mut foreign_service) = test_service();
+        let _ = &foreign_directory;
+        foreign_service
+            .create_vault(MASTER, AppSettings::default())
+            .expect("create foreign vault");
+        let foreign_bytes = fs::read(&foreign_service.vault_path).expect("read foreign vault");
+
+        fs::create_dir_all(&backup_directory).expect("create backup directory");
+        let foreign_snapshot_path = backup_directory.join("qiring-foreign.qiring-snapshot");
+        fs::write(&foreign_snapshot_path, &foreign_bytes).expect("plant foreign snapshot");
+
+        let vault_before = fs::read(&service.vault_path).expect("read current vault");
+        let result = service.restore_snapshot(&foreign_snapshot_path);
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read(&service.vault_path).expect("read preserved vault"),
+            vault_before
+        );
+        assert_eq!(
+            service
+                .list_items(ListFilter::default())
+                .expect("session retained")
+                .len(),
+            1
+        );
     }
 
     #[test]

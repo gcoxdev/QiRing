@@ -43,24 +43,15 @@ Use `--wayland` to explicitly select Wayland, or set `QIRING_WINDOW_BACKEND=auto
 The desktop UI currently supports:
 
 - Startup flow:
-  - If vault does not exist: Create Vault screen only
-  - If vault exists: Unlock screen only
-  - QiRing workspace is shown only after unlock
-- QiRing has two equal-sized panes:
-  - `Ring`: simple categorized expandable/collapsible list of Qi names + search/clear
-  - `Qi`: tabbed editor (`Info`, `Key`, `Questions`)
-- Menu-driven options (outside Qi/Ring pane controls):
-  - Open QiRing workspace
-  - Open Password Profiles management screen
-  - Switch among the 5 view layouts (Vertical 1/2, Horizontal 1/2, Compact)
-- Qi Info tab:
-  - Category (existing or new), Qi Name, Tags, URL with external open button
-  - Open URL action automatically switches to Key tab
-- Qi Key tab:
-  - Username copy
-  - Password copy/show-hide
-  - Generate from selected saved password profile
-- Qi Questions tab:
-  - Security question/answer rows with answer copy buttons
-- Qi actions:
-  - `New Qi`, `Save Qi`, `Delete Qi` (with confirmation prompt)
+  - If a vault does not exist: Create Vault screen only, with a mandatory recovery-key ceremony (copy/save/print/verify/acknowledge) before the vault opens.
+  - If a vault exists: Unlock screen only, with tabs for master-password and recovery-key unlock.
+  - The authenticated vault shell is shown only after a successful unlock.
+- Context-sensitive header actions sit immediately before the navigation **Menu** and change per module (Qi actions on the Vault view, profile actions on Password Profiles, Save on Settings, Export on Backups). **Lock Vault** stays in the menu.
+- Modules, reachable from the menu or `Ctrl/Command + 1…6`:
+  - **Vault**: a two-pane `Ring`/`Qi` layout. `Ring` is a categorized, expandable/collapsible, searchable and taggable list of Qi entries with drag-and-drop or keyboard custom ordering (plus A–Z/Z–A modes). `Qi` is a single-form editor (no tabs) with Info fields (category, name, tags, URL with external open), credential fields (username, password with copy/show-hide, TOTP with countdown), notes, security questions, and password history.
+  - **Password Profiles**: a master-detail screen — a scrollable profile list on the left and a policy editor on the right (total length, per-class min/max ranges, allowed symbols, ambiguous-character filtering).
+  - **Health**: an offline report of reused, weak, old, and missing passwords, computed locally from the decrypted vault.
+  - **Backups**: manual passphrase-protected export/import with a mandatory preview step, plus automatic snapshot listing and restore.
+  - **Settings**: session (auto-lock, clipboard clear, lock-on-minimize/blur), theme, button display, automatic-snapshot preferences, master-password rotation, and recovery-key replacement.
+  - **Help**: in-app reference covering every page, setting, and keyboard shortcut.
+- Qi actions: `New Qi`, `Save Qi`, `Delete Qi` (with a named confirmation and a short undo window).

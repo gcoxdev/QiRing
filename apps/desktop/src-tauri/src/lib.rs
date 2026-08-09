@@ -1,10 +1,10 @@
 use anyhow::Context;
 use base64::Engine;
 use qiring_core::{
-    AppSettings, BackupManifest, BackupPreview, BackupSnapshot, GeneratedPassword, HealthReport,
-    ImportReport, ItemInput, ItemPatch, ItemSummary, ListFilter, PasswordPolicy, PasswordProfile,
-    RecoveryMaterial, RecoveryUnlockResult, SecurityStatus, TotpCode, UnlockResult, VaultItem, VaultService,
-    VaultSummary,
+    sniff_image_media_type, AppSettings, BackupManifest, BackupPreview, BackupSnapshot, GeneratedPassword,
+    HealthReport, ImportReport, ItemInput, ItemPatch, ItemSummary, ListFilter, PasswordPolicy,
+    PasswordProfile, RecoveryMaterial, RecoveryUnlockResult, SecurityStatus, TotpCode, UnlockResult,
+    VaultItem, VaultService, VaultSummary,
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -187,7 +187,7 @@ async fn save_recovery_key_dialog(app: AppHandle, recovery_key: String) -> Resul
         "QiRing recovery key\n\n{}\n\nStore this file offline. Anyone with this key and the vault file can reset the vault master password.\n",
         recovery_key.as_str()
     ));
-    qiring_storage::save_bytes_atomic(&path, contents.as_bytes()).map_err(display_error)?;
+    qiring_storage::save_bytes_atomic_user_directory(&path, contents.as_bytes()).map_err(display_error)?;
     Ok(Some(path.display().to_string()))
 }
 
@@ -658,22 +658,6 @@ fn image_data_url(bytes: &[u8]) -> Result<String, String> {
         "data:{media_type};base64,{}",
         base64::engine::general_purpose::STANDARD.encode(bytes)
     ))
-}
-
-fn sniff_image_media_type(bytes: &[u8]) -> Option<&'static str> {
-    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-        Some("image/png")
-    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
-        Some("image/jpeg")
-    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
-        Some("image/gif")
-    } else if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
-        Some("image/webp")
-    } else if bytes.starts_with(&[0, 0, 1, 0]) {
-        Some("image/x-icon")
-    } else {
-        None
-    }
 }
 
 fn fetch_favicon_data_url(raw_url: &str) -> Result<String, String> {

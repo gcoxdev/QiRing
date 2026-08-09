@@ -479,7 +479,7 @@ test("Help documents every module, setting, and keyboard route", async ({ page }
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await page.getByRole("menuitem", { name: /^Help/ }).click();
   await expect(page.locator("#viewTitle")).toHaveText("Help");
-  for (const heading of ["Unlock & recovery", "Vault", "Password profiles", "Vault health", "Encrypted backups", "Settings", "Navigation & shortcuts"]) {
+  for (const heading of ["Getting started", "Create, unlock & recovery", "Vault (Ring & Qi editor)", "Password profiles", "Vault health", "Encrypted backups", "Settings", "Navigation & shortcuts"]) {
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
   for (const setting of ["Auto-lock minutes", "Clipboard clear seconds", "Theme", "Button display", "Backup directory", "Rotate master password", "Replace recovery key"]) {
@@ -492,6 +492,21 @@ test("Help documents every module, setting, and keyboard route", async ({ page }
   await page.keyboard.press("Control+6");
   await expect(page.locator("#helpView")).toBeVisible();
   await expect(page.locator("#viewTitle")).toHaveText("Help");
+
+  await page.getByRole("button", { name: "Password profiles" }).click();
+  await expect(page.locator("#help-profiles")).toBeInViewport();
+  await expect(page.locator(".help-nav-link.active")).toHaveText("Password profiles");
+
+  await page.locator("#helpSearch").fill("clipboard");
+  await expect(page.locator(".help-nav-link:visible")).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Create, unlock & recovery" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Password profiles" })).toBeHidden();
+  await expect(page.locator("#help-vault h4", { hasText: "Ring (left pane)" })).toBeHidden();
+  await expect(page.locator("#help-vault dt", { hasText: "Password" }).first()).toBeVisible();
+
+  await page.locator("#clearHelpSearch").click();
+  await expect(page.locator("#helpSearch")).toHaveValue("");
+  await expect(page.locator(".help-nav-link:visible")).toHaveCount(8);
 });
 
 test("ring categories expose collapsible groups with live counters", async ({ page }) => {

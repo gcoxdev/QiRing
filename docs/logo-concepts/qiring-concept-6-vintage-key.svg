@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">QiRing vintage warded key mark</title>
+  <rect width="128" height="128" rx="22" fill="#0a0e0d"/>
+  <g fill="#9df7c7">
+    <!-- ornate bow: a round Q-style ring with an inner cut, vintage escutcheon feel -->
+    <circle cx="50" cy="42" r="24" fill="none" stroke="#9df7c7" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="50" cy="42" r="9" fill="none" stroke="#9df7c7" stroke-width="5"/>
+    <!-- Q tail cue on the bow, becomes the top of the shaft -->
+    <path d="M66 57 72 63" fill="none" stroke="#9df7c7" stroke-width="9" stroke-linecap="round"/>
+    <!-- long shaft down to a warded bit at the bottom -->
+    <rect x="68.5" y="61" width="7" height="38" rx="1"/>
+    <!-- warded bit teeth: asymmetric stepped prongs, classic antique key silhouette -->
+    <path d="M75.5 82 H88 V90 H81 V97 H75.5 Z"/>
+    <path d="M68.5 93 H58 V101 H65 V107 H68.5 Z"/>
+  </g>
+</svg>

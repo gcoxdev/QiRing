@@ -37,6 +37,7 @@ const elements = Object.fromEntries(
     "generatePassword", "itemTotpSecret", "totpCode", "refreshTotp", "totpRemaining", "itemNotes",
     "questionSection", "addQuestion", "questionList", "historySection", "historyList", "profileCount",
     "profileList", "profileEditorTitle", "profileDirtyIndicator", "profileForm", "profileName", "profileLength",
+    "profileRangeSummary",
     "upperMin", "upperMax", "lowerMin", "lowerMax", "numbersMin", "numbersMax", "symbolsMin", "symbolsMax", "allowedSymbols", "avoidAmbiguous",
     "testProfile", "profileTestOutput", "runHealth", "healthAnalyzed", "healthWeak", "healthReused",
     "healthOld", "healthIssues", "backupPassphrase", "exportBackup", "selectBackup", "selectedBackupPath",
@@ -46,7 +47,8 @@ const elements = Object.fromEntries(
     "oldMasterPassword", "newMasterPassword", "rotateMaster", "recoveryMasterPassword", "regenerateRecovery",
     "recoveryDialog", "recoveryKeyOutput", "recoveryFingerprint", "copyRecoveryKey", "saveRecoveryKey", "printRecoveryKey", "recoveryVerify", "recoveryAcknowledged",
     "finishRecovery", "unsavedDialog", "unsavedDialogMessage", "stayOnPage", "discardAndContinue", "saveAndContinue",
-    "confirmationDialog", "confirmationDialogTitle", "confirmationDialogMessage", "cancelConfirmation", "confirmAction", "toastRegion"
+    "confirmationDialog", "confirmationDialogTitle", "confirmationDialogMessage", "cancelConfirmation", "confirmAction", "toastRegion",
+    "helpSearch", "clearHelpSearch", "helpNav", "helpContent", "helpArticles"
   ].map((id) => [id, byId(id)])
 );
 
@@ -96,7 +98,9 @@ const state = {
   itemIconDataUrl: null,
   unsavedDecisionResolver: null,
   confirmationResolver: null,
-  unlocked: false
+  unlocked: false,
+  helpNavInitialized: false,
+  helpSearchTimer: null
 };
 
 function errorMessage(error) {
@@ -311,9 +315,9 @@ async function enterVault() {
   applyTheme(settings.theme);
   applyButtonDisplay(settings.button_display);
   renderProfiles();
-  if (state.profiles[0]) selectProfile(state.profiles[0].id, { force: true });
+  if (state.profiles[0]) await selectProfile(state.profiles[0].id, { force: true });
   renderItems();
-  newItem({ force: true });
+  await newItem({ force: true });
   await navigate("qiring", { force: true, focusHeading: false });
 }
 
@@ -411,6 +415,7 @@ async function navigate(view, { force = false, focusHeading = true } = {}) {
   if (view === "health") await runHealthAnalysis();
   if (view === "backups") await refreshSnapshots();
   if (view === "settings") await loadSettings();
+  if (view === "help") initHelpNav();
 }
 
 function configureContextActions() {
@@ -469,6 +474,7 @@ function markItemDirty() {
 }
 
 function markProfileDirty() {
+  updateProfileRangeSummary();
   if (state.suppressDirty) return;
   state.profileDirty = true;
   updateDirtyIndicators();
@@ -839,8 +845,12 @@ function scheduleSearch() {
   }, 180);
 }
 
-function newItem({ force = false } = {}) {
-  if (!force && state.itemDirty && !window.confirm("Discard the unsaved Qi entry?")) return;
+async function newItem({ force = false } = {}) {
+  if (!force && state.itemDirty) {
+    const decision = await askUnsavedDecision("Save your changes before starting a new Qi entry?");
+    if (decision === "stay") return;
+    if (decision === "save" && (!await saveItem() || state.itemDirty)) return;
+  }
   state.suppressDirty = true;
   state.selectedItemId = null;
   elements.itemForm.reset();
@@ -1033,7 +1043,7 @@ async function deleteItem() {
     confirmLabel: "Delete Qi"
   })) return;
   await busy(elements.deleteAction, () => vaultApi.deleteItem(state.selectedItemId));
-  newItem({ force: true });
+  await newItem({ force: true });
   await refreshItems({ refreshCatalog: true });
   toast("Qi moved to encrypted deletion history.", {
     actionLabel: "Undo",
@@ -1126,7 +1136,7 @@ function renderProfiles() {
     button.classList.toggle("active", profile.id === state.selectedProfileId);
     button.setAttribute("aria-pressed", String(profile.id === state.selectedProfileId));
     button.append(createElement("strong", { text: profile.name }));
-    button.addEventListener("click", () => selectProfile(profile.id));
+    button.addEventListener("click", runSafely(() => selectProfile(profile.id)));
     elements.profileList.append(button);
   }
   if (state.profiles.length === 0) {
@@ -1134,8 +1144,12 @@ function renderProfiles() {
   }
 }
 
-function newProfile({ force = false } = {}) {
-  if (!force && state.profileDirty && !window.confirm("Discard the unsaved password profile?")) return;
+async function newProfile({ force = false } = {}) {
+  if (!force && state.profileDirty) {
+    const decision = await askUnsavedDecision("Save your changes before starting a new password profile?");
+    if (decision === "stay") return;
+    if (decision === "save" && (!await saveProfile() || state.profileDirty)) return;
+  }
   state.suppressDirty = true;
   state.selectedProfileId = null;
   elements.profileForm.reset();
@@ -1149,15 +1163,20 @@ function newProfile({ force = false } = {}) {
   state.profileDirty = false;
   state.suppressDirty = false;
   updateDirtyIndicators();
+  updateProfileRangeSummary();
   renderProfiles();
   updateContextActionState();
   elements.profileName.focus();
 }
 
-function selectProfile(id, { force = false } = {}) {
-  if (!force && state.profileDirty && !window.confirm("Discard changes to this password profile?")) return;
+async function selectProfile(id, { force = false } = {}) {
   const profile = state.profiles.find((candidate) => candidate.id === id);
   if (!profile) return;
+  if (!force && state.profileDirty) {
+    const decision = await askUnsavedDecision(`Save your changes before opening “${profile.name}”?`);
+    if (decision === "stay") return;
+    if (decision === "save" && (!await saveProfile() || state.profileDirty)) return;
+  }
   state.suppressDirty = true;
   state.selectedProfileId = id;
   elements.profileName.value = profile.name;
@@ -1177,6 +1196,7 @@ function selectProfile(id, { force = false } = {}) {
   state.profileDirty = false;
   state.suppressDirty = false;
   updateDirtyIndicators();
+  updateProfileRangeSummary();
   renderProfiles();
   updateContextActionState();
 }
@@ -1198,12 +1218,45 @@ function profileFromForm() {
   };
 }
 
+function profileRangeIssue(policy) {
+  const { length, upper, lower, numbers, symbols } = policy;
+  const ranges = [
+    ["Uppercase", upper],
+    ["Lowercase", lower],
+    ["Numbers", numbers],
+    ["Symbols", symbols]
+  ];
+  for (const [label, range] of ranges) {
+    if (range.min > range.max || range.max > length) {
+      return `${label} range must satisfy 0 ≤ min ≤ max ≤ length (length is ${length}).`;
+    }
+  }
+  const minimumTotal = upper.min + lower.min + numbers.min + symbols.min;
+  const maximumTotal = upper.max + lower.max + numbers.max + symbols.max;
+  if (minimumTotal > length) {
+    return `The minimums add up to ${minimumTotal}, which is more than the total length of ${length}.`;
+  }
+  if (maximumTotal < length || maximumTotal === 0) {
+    return `The maximums add up to ${maximumTotal}, which cannot reach the total length of ${length}.`;
+  }
+  return null;
+}
+
+function updateProfileRangeSummary() {
+  const issue = profileRangeIssue(profileFromForm().policy);
+  elements.profileRangeSummary.hidden = !issue;
+  elements.profileRangeSummary.textContent = issue || "";
+  elements.profileRangeSummary.classList.toggle("invalid", Boolean(issue));
+  return issue;
+}
+
 async function saveProfile() {
   if (!elements.profileForm.reportValidity()) return false;
+  if (updateProfileRangeSummary()) return false;
   const id = await busy(elements.saveAction, () => vaultApi.saveProfile(profileFromForm()));
   state.profiles = await vaultApi.listProfiles();
   state.profileDirty = false;
-  selectProfile(id, { force: true });
+  await selectProfile(id, { force: true });
   renderProfiles();
   toast("Password profile saved inside the encrypted vault.");
   return true;
@@ -1220,16 +1273,91 @@ async function deleteProfile() {
   await busy(elements.deleteAction, () => vaultApi.deleteProfile(state.selectedProfileId));
   state.profiles = await vaultApi.listProfiles();
   const next = state.profiles[0]?.id;
-  if (next) selectProfile(next, { force: true });
-  else newProfile({ force: true });
+  if (next) await selectProfile(next, { force: true });
+  else await newProfile({ force: true });
   renderProfiles();
   toast("Password profile deleted.");
 }
 
 async function testProfile() {
   if (!elements.profileForm.reportValidity()) return;
+  if (updateProfileRangeSummary()) return;
   const result = await vaultApi.generatePassword(profileFromForm().policy);
   elements.profileTestOutput.textContent = result.value;
+}
+
+function initHelpNav() {
+  if (state.helpNavInitialized) return;
+  state.helpNavInitialized = true;
+  const links = [...elements.helpNav.querySelectorAll(".help-nav-link")];
+  const articles = [...elements.helpArticles.querySelectorAll(".help-article")];
+
+  const setActiveLink = (id) => {
+    for (const link of links) link.classList.toggle("active", link.dataset.target === id);
+  };
+
+  for (const link of links) {
+    link.addEventListener("click", () => {
+      const target = byId(link.dataset.target);
+      target.scrollIntoView({ block: "start", behavior: "smooth" });
+      setActiveLink(link.dataset.target);
+    });
+  }
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (visible) setActiveLink(visible.target.id);
+    },
+    { root: elements.helpContent, rootMargin: "0px 0px -70% 0px", threshold: 0 }
+  );
+  for (const article of articles) observer.observe(article);
+  setActiveLink(articles[0]?.id);
+
+  elements.helpSearch.addEventListener("input", () => {
+    window.clearTimeout(state.helpSearchTimer);
+    state.helpSearchTimer = window.setTimeout(applyHelpSearch, 120);
+  });
+  elements.clearHelpSearch.addEventListener("click", () => {
+    elements.helpSearch.value = "";
+    applyHelpSearch();
+    elements.helpSearch.focus();
+  });
+}
+
+function applyHelpSearch() {
+  const query = elements.helpSearch.value.trim().toLowerCase();
+  const links = [...elements.helpNav.querySelectorAll(".help-nav-link")];
+  const articles = [...elements.helpArticles.querySelectorAll(".help-article")];
+  let firstMatch = null;
+
+  for (const article of articles) {
+    const rows = [...article.querySelectorAll(".help-definitions > div")];
+    let articleMatches = !query;
+    for (const row of rows) {
+      const matches = !query || row.textContent.toLowerCase().includes(query);
+      row.hidden = query ? !matches : false;
+      if (matches) articleMatches = true;
+    }
+    for (const heading of article.querySelectorAll("h4")) {
+      const list = heading.nextElementSibling?.matches(".help-definitions") ? heading.nextElementSibling : null;
+      const hasVisibleRow = list ? [...list.children].some((row) => !row.hidden) : true;
+      heading.hidden = query ? !hasVisibleRow : false;
+    }
+    const introMatches = !query || [...article.querySelectorAll(":scope > p, :scope > h3")]
+      .some((node) => node.textContent.toLowerCase().includes(query));
+    const show = !query || articleMatches || introMatches;
+    article.hidden = !show;
+    const link = links.find((candidate) => candidate.dataset.target === article.id);
+    if (link) link.hidden = !show;
+    if (show && !firstMatch) firstMatch = article.id;
+  }
+
+  if (query && firstMatch) {
+    for (const link of links) link.classList.toggle("active", link.dataset.target === firstMatch);
+  }
 }
 
 async function runHealthAnalysis() {
@@ -1330,7 +1458,11 @@ async function rotateMasterPassword() {
   const oldPassword = elements.oldMasterPassword.value;
   const newPassword = elements.newMasterPassword.value;
   if (!oldPassword || !newPassword) throw new Error("Enter both the current and new master passwords.");
-  if (!window.confirm("Rotate the master password now? The old password will stop unlocking this vault.")) return;
+  if (!await askConfirmation({
+    title: "Rotate master password?",
+    message: "Rotate the master password now? The old password will stop unlocking this vault.",
+    confirmLabel: "Rotate password"
+  })) return;
   await busy(elements.rotateMaster, () => vaultApi.rotateMaster(oldPassword, newPassword));
   elements.oldMasterPassword.value = "";
   elements.newMasterPassword.value = "";
@@ -1340,7 +1472,11 @@ async function rotateMasterPassword() {
 async function regenerateRecovery() {
   const password = elements.recoveryMasterPassword.value;
   if (!password) throw new Error("Enter your master password first.");
-  if (!window.confirm("Replace the recovery key? The current recovery key will stop working immediately.")) return;
+  if (!await askConfirmation({
+    title: "Replace recovery key?",
+    message: "Replace the recovery key? The current recovery key will stop working immediately.",
+    confirmLabel: "Replace key"
+  })) return;
   const material = await busy(elements.regenerateRecovery, () => vaultApi.regenerateRecovery(password));
   elements.recoveryMasterPassword.value = "";
   showRecoveryCeremony(material, async () => toast("Recovery key replaced."));
@@ -1382,7 +1518,11 @@ async function previewBackup() {
 
 async function restoreBackup() {
   if (!state.selectedBackupToken || !state.backupPreviewed) throw new Error("Preview the backup before restoring it.");
-  if (!window.confirm("Replace the current vault with the previewed backup? QiRing will lock immediately after the atomic restore.")) return;
+  if (!await askConfirmation({
+    title: "Restore previewed backup?",
+    message: "Replace the current vault with the previewed backup? QiRing will lock immediately after the atomic restore.",
+    confirmLabel: "Restore backup"
+  })) return;
   const report = await busy(elements.restoreBackup, () => vaultApi.importBackup(state.selectedBackupToken, elements.restorePassphrase.value));
   resetSessionUi();
   setAuthScreen("unlock");
@@ -1401,7 +1541,11 @@ async function refreshSnapshots() {
     const restore = createElement("button", { className: "danger compact", text: "Restore", type: "button", icon: "undo" });
     restore.addEventListener("click", async () => {
       try {
-        if (!window.confirm("Restore this automatic snapshot and replace the current vault? QiRing will lock.")) return;
+        if (!await askConfirmation({
+          title: "Restore snapshot?",
+          message: `Restore “${snapshot.path}” and replace the current vault? QiRing will lock.`,
+          confirmLabel: "Restore snapshot"
+        })) return;
         await vaultApi.restoreSnapshot(snapshot.path);
         resetSessionUi();
         setAuthScreen("unlock");
@@ -1463,8 +1607,8 @@ async function handleBackendLock() {
 
 async function handleContextAction(kind) {
   if (kind === "new") {
-    if (state.view === "qiring") newItem();
-    if (state.view === "profiles") newProfile();
+    if (state.view === "qiring") await newItem();
+    if (state.view === "profiles") await newProfile();
     return;
   }
   if (kind === "save") {

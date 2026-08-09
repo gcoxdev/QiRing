@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">QiRing keyring mark</title>
+  <rect width="128" height="128" rx="22" fill="#0a0e0d"/>
+  <g fill="none" stroke-linecap="round">
+    <!-- main ring (largest, bottom-left) -->
+    <circle cx="52" cy="72" r="27" stroke="#9df7c7" stroke-width="9"/>
+    <!-- mid ring, overlapping upper-right -->
+    <circle cx="83" cy="46" r="19" stroke="#55c98d" stroke-width="8"/>
+    <!-- small ring tucked in the overlap -->
+    <circle cx="88" cy="80" r="12" stroke="#eef6f1" stroke-width="6"/>
+  </g>
+  <!-- keyhole cut into the main ring to keep the security cue legible -->
+  <g fill="#0a0e0d">
+    <circle cx="52" cy="72" r="9.5"/>
+    <path d="m46.3 79.5-3.8 19.5h19l-3.8-19.5Z"/>
+  </g>
+</svg>

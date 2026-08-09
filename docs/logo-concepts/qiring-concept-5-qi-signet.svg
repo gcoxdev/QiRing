@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">QiRing Qi signet mark</title>
+  <rect width="128" height="128" rx="22" fill="#0a0e0d"/>
+  <!-- outer seal ring -->
+  <circle cx="64" cy="64" r="35" fill="none" stroke="#9df7c7" stroke-width="7"/>
+  <!-- flowing Qi energy ribbon spiraling to a grounded center point -->
+  <path d="M64 34
+           c16 0 26 10 26 22
+           s-10 20-22 20
+           s-16-8-16-16
+           s6-12 12-12
+           s9 4 9 9"
+        fill="none" stroke="#9df7c7" stroke-width="6.5" stroke-linecap="round"/>
+  <!-- grounded center point, echoes a keyhole without being literal -->
+  <circle cx="73" cy="57" r="4.5" fill="#eef6f1"/>
+</svg>
