@@ -32,11 +32,17 @@ The expanded [threat model](./threat-model.md) defines assets, adversaries, boun
 - Adopted Concept 1, redrew it as a production SVG, applied it throughout the UI, and generated the complete Tauri platform icon set.
 - Added context-sensitive header actions immediately before Menu: Qi actions, profile actions, Settings save, and Backup export. Save/delete state follows dirtiness and selection.
 - Rebuilt Password Profiles as a left master list and right policy editor with total length, per-class minimum/maximum, allowed symbols, ambiguous-character filtering, encrypted persistence, and generator sampling.
-- Explicitly styled native selects/options for dark contrast, including the Qi password-profile and item-type selectors.
+- Styled native selects/options from theme variables so dark and light popup controls retain readable contrast.
 - Set native and CSS minimums to 800×600; replaced fixed pane heights with bounded viewport grids and pane-level scrolling.
 - Removed the status bar and added non-layout toasts with live-region behavior, persistent errors, dismissal, action buttons, and hover/focus pause.
 - Tightened Qi/Ring spacing while preserving usable hit targets. The header stays visible and the primary panes own scrolling.
 - Added focus-visible, disabled/busy, tabs, menu keyboard/focus behavior, semantic headings/labels, masked answers, unsaved-change guards, search debounce/stale-response protection, list rendering containment, and reduced-motion support.
+- Added a default icon-and-label button system with encrypted settings for icon-only or label-only display, immediate painted unlock feedback, save-before-lock handling, simplified unclipped index rows, and matched search/counter control heights.
+- Kept navigation-menu labels visible in icon-only mode, added native label tooltips, replaced the Settings glyph with a recognizable gear, and removed redundant lock/unlock notifications.
+- Added save/discard/stay handling when switching Qi entries and encrypted three-mode Ring ordering: A–Z, Z–A, and persistent custom category/Qi order with mouse and keyboard reordering.
+- Rebalanced the 800 px master-detail grids and made range/icon action rows intrinsically shrinkable so editor controls remain inside their panes at the supported minimum window size.
+- Added encrypted per-Qi image upload and direct favicon import with SSRF/redirect/size/type protections, plus icon rendering in the Ring index.
+- Added native window size/position persistence with current-monitor clamping and primary-display fallback when monitor topology or resolution changes.
 - Added Settings, secure notes, encrypted password history, deletion undo, offline health, RFC 6238 TOTP with countdown/clock guidance, documented keyboard workflow, manual encrypted backups, automatic snapshots/retention, restore preview, master rotation, and recovery-key management.
 
 ## Architecture and test work
@@ -59,11 +65,11 @@ On clean Windows, macOS, and Linux test machines, verify installation/removal, r
 | --- | --- |
 | `cargo fmt --all -- --check` | Pass |
 | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | Pass |
-| `cargo test --workspace` | Pass: 34 tests |
+| `cargo test --workspace` | Pass: 38 tests |
 | `cargo check --manifest-path fuzz/Cargo.toml --all-targets` | Pass: four fuzz targets compile |
 | `npm run build` | Pass |
 | `npm run test:ui-contract` | Pass |
-| `npm run test:e2e` | Pass: 6 Playwright/axe flows |
+| `npm run test:e2e` | Pass: 16 Playwright/axe flows |
 | `npm audit --audit-level=moderate` | Pass: 0 vulnerabilities |
 | `cargo audit` | Pass: 0 vulnerability-class findings; 17 unsuppressed informational warnings documented in the threat model |
 | `cargo audit --no-fetch --file fuzz/Cargo.lock` | Pass |

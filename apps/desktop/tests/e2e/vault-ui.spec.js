@@ -3,6 +3,13 @@ import AxeBuilder from "@axe-core/playwright";
 
 async function installTauriMock(page) {
   await page.addInitScript(() => {
+    let frameCounter = 0;
+    const countFrame = () => {
+      frameCounter += 1;
+      window.__frameCounter = frameCounter;
+      window.requestAnimationFrame(countFrame);
+    };
+    window.requestAnimationFrame(countFrame);
     const callbacks = new Map();
     let callbackId = 1;
     const profiles = [{
@@ -19,10 +26,19 @@ async function installTauriMock(page) {
       }
     }];
     const items = [
-      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", item_type: "login", title: "Admin", username: "admin@example.com", folder: "Work", tags: [], has_totp: true, updated_at: new Date().toISOString() },
-      { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", item_type: "login", title: "Billing", username: "billing@example.com", folder: "Work", tags: [], has_totp: false, updated_at: new Date().toISOString() },
-      { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", item_type: "secure_note", title: "Passport", username: null, folder: "Personal", tags: [], has_totp: false, updated_at: new Date().toISOString() }
+      { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", item_type: "login", title: "Admin", username: "admin@example.com", folder: "Work", tags: [], icon_data_url: null, has_totp: true, updated_at: new Date().toISOString() },
+      { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", item_type: "login", title: "Billing", username: "billing@example.com", folder: "Work", tags: [], icon_data_url: null, has_totp: false, updated_at: new Date().toISOString() },
+      { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", item_type: "secure_note", title: "Passport", username: null, folder: "Personal", tags: [], icon_data_url: null, has_totp: false, updated_at: new Date().toISOString() }
     ];
+    const itemRecords = new Map(items.map((item) => [item.id, {
+      ...item,
+      password: null,
+      url: null,
+      notes: null,
+      security_questions: [],
+      totp_secret: null,
+      password_history: []
+    }]));
     const settings = {
       auto_lock_minutes: 5,
       clipboard_clear_seconds: 30,
@@ -30,6 +46,10 @@ async function installTauriMock(page) {
       lock_on_minimize: true,
       biometric_enabled: false,
       theme: "dark",
+      button_display: "both",
+      ring_sort_mode: "custom",
+      ring_category_order: [],
+      ring_item_order: [],
       backup_preferences: {
         include_settings: true,
         automatic_enabled: false,
@@ -55,10 +75,18 @@ async function installTauriMock(page) {
           case "plugin:event|listen": return args.handler;
           case "plugin:event|unlisten": return null;
           case "vault_exists": return true;
-          case "unlock_vault_master": return { session: { token: "session", unlocked_at: new Date().toISOString() }, migrated_recovery: null };
+          case "unlock_vault_master": {
+            window.__unlockFeedbackAtInvoke = {
+              frame: frameCounter,
+              busy: document.querySelector("#masterUnlockPanel button").getAttribute("aria-busy"),
+              label: document.querySelector("#masterUnlockPanel button").textContent.trim()
+            };
+            await new Promise((resolve) => window.setTimeout(resolve, 800));
+            return { session: { token: "session", unlocked_at: new Date().toISOString() }, migrated_recovery: null };
+          }
           case "get_security_status": return {
             schema_version: 2,
-            command_version: "2",
+            command_version: "4",
             biometric_available: false,
             biometric_enabled: false,
             auto_lock_minutes: settings.auto_lock_minutes,
@@ -73,7 +101,49 @@ async function installTauriMock(page) {
               ? items.filter((item) => [item.title, item.username, item.folder].some((value) => value?.toLocaleLowerCase().includes(query)))
               : items);
           }
+          case "get_item": return structuredClone(itemRecords.get(args.itemId));
+          case "add_item": {
+            const id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+            const record = {
+              id,
+              ...structuredClone(args.input),
+              has_totp: Boolean(args.input.totp_secret),
+              updated_at: new Date().toISOString(),
+              password_history: []
+            };
+            itemRecords.set(id, record);
+            items.push({
+              id,
+              item_type: record.item_type,
+              title: record.title,
+              username: record.username,
+              folder: record.folder,
+              tags: record.tags,
+              icon_data_url: record.icon_data_url,
+              has_totp: record.has_totp,
+              updated_at: record.updated_at
+            });
+            return id;
+          }
+          case "update_item": {
+            const record = itemRecords.get(args.itemId);
+            Object.assign(record, structuredClone(args.patch), { updated_at: new Date().toISOString() });
+            const summary = items.find((item) => item.id === args.itemId);
+            Object.assign(summary, {
+              title: record.title,
+              username: record.username,
+              folder: record.folder,
+              tags: record.tags,
+              icon_data_url: record.icon_data_url,
+              has_totp: Boolean(record.totp_secret),
+              updated_at: record.updated_at
+            });
+            return null;
+          }
+          case "select_item_icon_dialog": return "data:image/png;base64,iVBORw0KGgo=";
+          case "fetch_favicon": return "data:image/png;base64,iVBORw0KGgo=";
           case "get_settings": return structuredClone(settings);
+          case "update_settings": Object.assign(settings, structuredClone(args.settings)); return null;
           case "generate_password": return { value: "Aaaa1111!!!!MockPass".slice(0, args.policy.length) };
           case "save_profile": {
             const profile = structuredClone(args.profile);
@@ -102,11 +172,20 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator("#unlockScreen .section-code, .auth-lede, .security-spec, .eyebrow")).toHaveCount(0);
   await expect(page.locator("#unlockTitle")).toHaveText("Unlock QiRing");
   await page.locator("#unlockMaster").fill("correct horse battery staple");
-  await page.getByRole("button", { name: "Unlock vault" }).click();
-  await expect(page.getByRole("heading", { name: "Stored Qi" })).toBeVisible();
+  const unlockButton = page.locator("#masterUnlockPanel button[type=submit]");
+  const frameBeforeUnlock = await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(window.__frameCounter))));
+  await unlockButton.click();
+  await expect(unlockButton).toHaveAttribute("aria-busy", "true");
+  await expect(unlockButton).toHaveText("Unlocking…");
+  await expect(page.getByRole("heading", { name: "Stored Qi" })).toBeVisible({ timeout: 15_000 });
+  const feedback = await page.evaluate(() => window.__unlockFeedbackAtInvoke);
+  expect(feedback.busy).toBe("true");
+  expect(feedback.label).toBe("Unlocking…");
+  expect(feedback.frame).toBeGreaterThan(frameBeforeUnlock);
 });
 
 test("context actions and profile master-detail editor follow the active module", async ({ page }) => {
+  await expect(page.locator("#viewTitle")).toHaveText("Vault");
   await expect(page.getByRole("button", { name: "New Qi" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save Qi" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Delete Qi" })).toBeVisible();
@@ -135,7 +214,7 @@ test("context actions and profile master-detail editor follow the active module"
   await expect(page.getByRole("button", { name: "Save Profile" })).toBeHidden();
 });
 
-test("native selects remain legible and the 800 by 600 layout stays bounded", async ({ page }) => {
+test("controls align and the 800 by 600 layouts do not clip", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   const selectStyle = await page.locator("#profileSelect").evaluate((element) => {
     const style = getComputedStyle(element);
@@ -143,15 +222,57 @@ test("native selects remain legible and the 800 by 600 layout stays bounded", as
   });
   expect(selectStyle.background).toBe("rgb(21, 27, 24)");
   expect(selectStyle.color).toBe("rgb(238, 246, 241)");
-  const qiControlHeights = await page.locator("#itemTitle, #itemType, #profileSelect").evaluateAll((controls) => controls.map((control) => control.getBoundingClientRect().height));
+  const qiControlHeights = await page.locator("#itemTitle, #itemType, #profileSelect, #generatePassword, #openUrlButton").evaluateAll((controls) => controls.map((control) => control.getBoundingClientRect().height));
   expect(new Set(qiControlHeights).size).toBe(1);
+  expect(qiControlHeights[0]).toBe(38);
+  await expect(page.locator(".credential-grid")).toHaveCSS("margin-top", "12px");
+  const qiIconBounds = await page.locator(".qi-icon-row").evaluate((container) => {
+    const outer = container.getBoundingClientRect();
+    const actions = container.querySelector(".button-row").getBoundingClientRect();
+    return { outerRight: outer.right, actionsRight: actions.right, viewport: window.innerWidth };
+  });
+  expect(qiIconBounds.actionsRight).toBeLessThanOrEqual(qiIconBounds.outerRight + 1);
+  expect(qiIconBounds.outerRight).toBeLessThanOrEqual(qiIconBounds.viewport);
+
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /Password Profiles/ }).click();
+  const profileRangeBounds = await page.locator(".range-table").evaluate((container) => {
+    const outer = container.getBoundingClientRect();
+    const inputs = [...container.querySelectorAll("input")].map((input) => input.getBoundingClientRect().right);
+    return { outerRight: outer.right, rightmostInput: Math.max(...inputs), viewport: window.innerWidth };
+  });
+  expect(profileRangeBounds.rightmostInput).toBeLessThanOrEqual(profileRangeBounds.outerRight + 1);
+  expect(profileRangeBounds.outerRight).toBeLessThanOrEqual(profileRangeBounds.viewport);
 
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
   const settingsControlHeights = await page.locator("#autoLockMinutes, #themeSelect").evaluateAll((controls) => controls.map((control) => control.getBoundingClientRect().height));
   expect(new Set(settingsControlHeights).size).toBe(1);
   await expect(page.locator("body")).toHaveJSProperty("scrollHeight", 600);
+  const vaultBounds = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
+  expect(vaultBounds.document).toBeLessThanOrEqual(vaultBounds.viewport);
+  expect(vaultBounds.body).toBeLessThanOrEqual(vaultBounds.viewport);
   await expect(page.getByRole("button", { name: "Open navigation menu" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /^Lock/ }).click();
+  const unlockBounds = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
+  expect(unlockBounds.document).toBeLessThanOrEqual(unlockBounds.viewport);
+  expect(unlockBounds.body).toBeLessThanOrEqual(unlockBounds.viewport);
+  const authAlignment = await page.evaluate(() => {
+    const mark = document.querySelector(".auth-mark").getBoundingClientRect();
+    const title = document.querySelector("#authBrandTitle").getBoundingClientRect();
+    const visibleAuth = [...document.querySelectorAll("#unlockScreen .auth-tabs, #masterUnlockPanel")].map((node) => node.getBoundingClientRect());
+    return {
+      logoBeforeTitle: mark.right < title.left,
+      brandCenter: (Math.min(mark.top, title.top) + Math.max(mark.bottom, title.bottom)) / 2,
+      formCenter: (Math.min(...visibleAuth.map((rect) => rect.top)) + Math.max(...visibleAuth.map((rect) => rect.bottom))) / 2,
+      viewportCenter: window.innerHeight / 2
+    };
+  });
+  expect(authAlignment.logoBeforeTitle).toBe(true);
+  expect(Math.abs(authAlignment.brandCenter - authAlignment.viewportCenter)).toBeLessThan(2);
+  expect(Math.abs(authAlignment.formCenter - authAlignment.viewportCenter)).toBeLessThan(12);
 });
 
 test("ring categories expose collapsible groups with live counters", async ({ page }) => {
@@ -160,12 +281,140 @@ test("ring categories expose collapsible groups with live counters", async ({ pa
 
   await expect(work.locator(".category-count")).toHaveText("2");
   await expect(personal.locator(".category-count")).toHaveText("1");
-  await expect(work).toHaveAttribute("open", "");
-  await work.locator("summary").click();
   await expect(work).not.toHaveAttribute("open", "");
   await expect(work.getByRole("button", { name: /Admin/ })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Collapse all categories" })).toBeDisabled();
+  await page.getByRole("button", { name: "Expand all categories" }).click();
+  await expect(work.getByRole("button", { name: "Admin", exact: true }).locator("strong")).toHaveText("Admin");
+  await expect(work).not.toContainText("admin@example.com");
+  await expect(work).toHaveAttribute("open", "");
+  await expect(personal).toHaveAttribute("open", "");
+  await page.getByRole("button", { name: "Collapse all categories" }).click();
+  await expect(work).not.toHaveAttribute("open", "");
   await work.locator("summary").click();
-  await expect(work.getByRole("button", { name: /Admin/ })).toBeVisible();
+  await expect(work.getByRole("button", { name: "Admin", exact: true })).toBeVisible();
+});
+
+test("Ring sorting cycles through alphabetic modes and preserves draggable custom order", async ({ page }) => {
+  const categoryNames = () => page.locator("#itemList > .category-group > .category-summary strong").allTextContents();
+  const sortButton = page.locator("#ringSortMode");
+  await expect(sortButton.locator(".button-label")).toHaveText("Custom");
+  expect(await categoryNames()).toEqual(["Personal", "Work"]);
+
+  await sortButton.click();
+  await expect(sortButton.locator(".button-label")).toHaveText("A–Z");
+  expect(await categoryNames()).toEqual(["Personal", "Work"]);
+  await sortButton.click();
+  await expect(sortButton.locator(".button-label")).toHaveText("Z–A");
+  expect(await categoryNames()).toEqual(["Work", "Personal"]);
+  await sortButton.click();
+  await expect(sortButton.locator(".button-label")).toHaveText("Custom");
+
+  const workHandle = page.locator('.drag-handle[data-order-kind="category"][data-order-id="Work"]');
+  const personalGroup = page.locator("#itemList > .category-group").filter({ has: page.getByText("Personal", { exact: true }) });
+  await workHandle.dragTo(personalGroup, { targetPosition: { x: 40, y: 2 } });
+  expect(await categoryNames()).toEqual(["Work", "Personal"]);
+
+  const workGroup = page.locator("#itemList > .category-group").filter({ has: page.getByText("Work", { exact: true }) });
+  await workGroup.locator("summary").click();
+  const billingHandle = workGroup.locator('.drag-handle[data-order-kind="item"][data-order-id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]');
+  const adminRow = workGroup.locator(".category-item-row").filter({ has: page.getByRole("button", { name: "Admin", exact: true }) });
+  await billingHandle.dragTo(adminRow, { targetPosition: { x: 40, y: 2 } });
+  await expect(workGroup.locator(".master-list-item strong").first()).toHaveText("Billing");
+
+  await sortButton.click();
+  await sortButton.click();
+  await sortButton.click();
+  expect(await categoryNames()).toEqual(["Work", "Personal"]);
+  await expect(page.locator("#itemList > .category-group").first().locator(".master-list-item strong").first()).toHaveText("Billing");
+});
+
+test("switching Qi offers save, discard, and stay choices", async ({ page }) => {
+  await page.getByRole("button", { name: "Expand all categories" }).click();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Edited Admin");
+  await page.getByRole("button", { name: "Billing", exact: true }).click();
+  const prompt = page.getByRole("dialog", { name: "Save changes?" });
+  await expect(prompt).toContainText("Save your changes before opening “Billing”?");
+  await prompt.getByRole("button", { name: "Stay" }).click();
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Edited Admin");
+
+  await page.getByRole("button", { name: "Billing", exact: true }).click();
+  await prompt.getByRole("button", { name: "Save & Continue" }).click();
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Billing");
+  await expect(page.getByRole("button", { name: "Edited Admin", exact: true })).toBeVisible();
+});
+
+test("list controls align and profile rows show unclipped names only", async ({ page }) => {
+  const vaultHeights = await page.locator("#searchInput, #clearSearch").evaluateAll((controls) => controls.map((control) => control.getBoundingClientRect().height));
+  expect(new Set(vaultHeights).size).toBe(1);
+  const counterHeights = await page.locator("#itemCount, #ringSortMode, #expandCategories, #collapseCategories").evaluateAll((controls) => controls.map((control) => control.getBoundingClientRect().height));
+  expect(new Set(counterHeights).size).toBe(1);
+
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /Password Profiles/ }).click();
+  const profileRow = page.locator("#profileList .master-list-item").first();
+  await expect(profileRow).toHaveText("Strong 20");
+  await expect(profileRow).not.toContainText("CHARACTERS");
+});
+
+test("light theme styles native selects and save-before-lock persists settings", async ({ page }) => {
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /Settings/ }).click();
+  await page.getByLabel("Theme").selectOption("light");
+  const selectStyle = await page.getByLabel("Theme").evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { background: style.backgroundColor, color: style.color };
+  });
+  expect(selectStyle.background).toBe("rgb(238, 244, 240)");
+  expect(selectStyle.color).toBe("rgb(20, 32, 25)");
+
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /^Lock/ }).click();
+  await expect(page.locator("#unsavedDialogMessage")).toHaveText("Save your changes before locking?");
+  await page.getByRole("button", { name: "Save & Continue" }).click();
+  await expect(page.locator("#unlockScreen")).toBeVisible();
+  await expect(page.locator(".toast")).toHaveCount(0);
+  await expect(page.locator(".auth-brand")).toHaveCSS("background-color", "rgb(248, 251, 249)");
+
+  await page.locator("#unlockMaster").fill("correct horse battery staple");
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Stored Qi" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+});
+
+test("button display preference and encrypted Qi icons update the interface", async ({ page }) => {
+  await page.getByRole("button", { name: "Expand all categories" }).click();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  await page.locator("#itemUrl").fill("https://example.com/account");
+  await page.getByRole("button", { name: "From website" }).click();
+  await expect(page.locator("#itemIconPreview")).toBeVisible();
+  await page.getByRole("button", { name: "Save Qi" }).click();
+  await expect(page.locator("#itemList img")).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /Settings/ }).click();
+  await page.getByLabel("Button display").selectOption("icons");
+  await expect(page.locator("html")).toHaveAttribute("data-button-display", "icons");
+  await expect(page.locator("#chooseBackupDirectory .button-label")).toBeHidden();
+  await expect(page.locator("#chooseBackupDirectory")).toHaveAttribute("aria-label", "Choose");
+  await expect(page.locator("#chooseBackupDirectory")).toHaveAttribute("title", "Choose");
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await expect(page.locator("#appMenu .button-label").first()).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /Settings/ }).locator(".button-label")).toHaveText("Settings");
+});
+
+test("standard workspace controls share a common height", async ({ page }) => {
+  for (const menuName of ["Vault", "Password Profiles", "Vault Health", "Backups", "Settings"]) {
+    if (menuName !== "Vault") {
+      await page.getByRole("button", { name: "Open navigation menu" }).click();
+      await page.getByRole("menuitem", { name: new RegExp(menuName) }).click();
+    }
+    const heights = await page.locator(".workspace input:not([type=checkbox]):not([type=radio]), .workspace select, .workspace button:not(.compact):not(.compact-button):not(.category-action):not(.sort-action)").evaluateAll((controls) => controls
+      .filter((control) => control.getClientRects().length > 0)
+      .map((control) => control.getBoundingClientRect().height));
+    expect([...new Set(heights)]).toEqual([38]);
+  }
 });
 
 test("backup and credential actions keep separation from their fields", async ({ page }) => {
@@ -180,7 +429,11 @@ test("backup and credential actions keep separation from their fields", async ({
 });
 
 test("toast countdown resets while hovered and resumes after pointer exit", async ({ page }) => {
-  const notification = page.locator(".toast").filter({ hasText: "Vault unlocked." });
+  await expect(page.locator(".toast")).toHaveCount(0);
+  await page.getByRole("button", { name: "Expand all categories" }).click();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  await page.getByRole("button", { name: "Generate password" }).click();
+  const notification = page.locator(".toast").filter({ hasText: "Generated a 20-character password" });
   const progress = notification.locator(".toast-progress-fill");
   await expect(progress).toBeVisible();
 
@@ -195,6 +448,12 @@ test("toast countdown resets while hovered and resumes after pointer exit", asyn
 test("authenticated workspace has no automatic accessibility violations", async ({ page }) => {
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations).toEqual([]);
+});
+
+test("Settings navigation uses a gear icon", async ({ page }) => {
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  const settingsIcon = page.getByRole("menuitem", { name: /Settings/ }).locator("svg path").first();
+  await expect(settingsIcon).toHaveAttribute("d", /^M12\.22 2h-/);
 });
 
 test("all authenticated modules and keyboard navigation remain usable", async ({ page }) => {
@@ -220,16 +479,20 @@ test("all authenticated modules and keyboard navigation remain usable", async ({
   await expect(page.getByRole("button", { name: "Open navigation menu" })).toBeFocused();
 });
 
-test("unsaved navigation is guarded and routine updates use the live toast region", async ({ page }) => {
+test("unsaved navigation offers save, discard, and stay choices", async ({ page }) => {
   await page.locator("#itemTitle").fill("Unsaved credential");
-  page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await page.getByRole("menuitem", { name: /Vault Health/ }).click();
-  await expect(page.getByRole("heading", { name: "Stored Qi" })).toBeVisible();
+  const prompt = page.getByRole("dialog", { name: "Save changes?" });
+  await expect(prompt).toBeVisible();
+  await expect(prompt).toContainText("Save your changes before opening Vault Health?");
+  await prompt.getByRole("button", { name: "Stay" }).click();
+  await expect(page.locator("#viewTitle")).toHaveText("Vault");
 
-  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
   await page.getByRole("menuitem", { name: /Vault Health/ }).click();
-  await page.getByRole("button", { name: "Run analysis" }).click();
+  await prompt.getByRole("button", { name: "Save & Continue" }).click();
+  await expect(page.locator("#viewTitle")).toHaveText("Vault Health");
   await expect(page.locator("#healthIssues")).toContainText("No weak, reused, or old passwords");
   await expect(page.locator("#toastRegion")).toHaveAttribute("aria-live", "polite");
 });

@@ -21,6 +21,8 @@ const COMMANDS: &[&str] = &[
     "update_settings",
     "health_report",
     "choose_backup_directory",
+    "select_item_icon_dialog",
+    "fetch_favicon",
     "export_backup_dialog",
     "select_backup_file",
     "preview_selected_backup",

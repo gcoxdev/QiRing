@@ -35,6 +35,8 @@ pub struct VaultItem {
     pub tags: Vec<String>,
     pub folder: Option<String>,
     #[serde(default)]
+    pub icon_data_url: Option<String>,
+    #[serde(default)]
     pub security_questions: Vec<SecurityQuestion>,
     #[serde(default)]
     pub totp_secret: Option<String>,
@@ -53,6 +55,10 @@ pub struct AppSettings {
     pub lock_on_minimize: bool,
     pub biometric_enabled: bool,
     pub theme: String,
+    pub button_display: String,
+    pub ring_sort_mode: String,
+    pub ring_category_order: Vec<String>,
+    pub ring_item_order: Vec<Uuid>,
     pub backup_preferences: BackupPreferences,
 }
 
@@ -65,6 +71,10 @@ impl Default for AppSettings {
             lock_on_minimize: true,
             biometric_enabled: false,
             theme: "system".to_string(),
+            button_display: "both".to_string(),
+            ring_sort_mode: "custom".to_string(),
+            ring_category_order: Vec::new(),
+            ring_item_order: Vec::new(),
             backup_preferences: BackupPreferences::default(),
         }
     }
@@ -244,6 +254,8 @@ pub struct ItemInput {
     pub tags: Vec<String>,
     pub folder: Option<String>,
     #[serde(default)]
+    pub icon_data_url: Option<String>,
+    #[serde(default)]
     pub security_questions: Vec<SecurityQuestion>,
     #[serde(default)]
     pub totp_secret: Option<String>,
@@ -258,6 +270,7 @@ pub struct ItemPatch {
     pub notes: Option<Option<String>>,
     pub tags: Option<Vec<String>>,
     pub folder: Option<Option<String>>,
+    pub icon_data_url: Option<Option<String>>,
     pub security_questions: Option<Vec<SecurityQuestion>>,
     pub totp_secret: Option<Option<String>>,
 }
@@ -278,6 +291,7 @@ pub struct ItemSummary {
     pub username: Option<String>,
     pub tags: Vec<String>,
     pub folder: Option<String>,
+    pub icon_data_url: Option<String>,
     pub has_totp: bool,
     pub updated_at: DateTime<Utc>,
 }

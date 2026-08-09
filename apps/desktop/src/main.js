@@ -1,6 +1,8 @@
 import "./styles.css";
 import { vaultApi, COMMAND_VERSION } from "./api.js";
-import { byId, createElement, formatBytes, formatDate, setHidden } from "./dom.js";
+import {
+  byId, createElement, createIcon, decorateButtons, formatBytes, formatDate, refreshButtonTitles, setButtonIcon, setButtonLabel, setHidden
+} from "./dom.js";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const DEFAULT_SETTINGS = {
@@ -10,6 +12,10 @@ const DEFAULT_SETTINGS = {
   lock_on_minimize: true,
   biometric_enabled: false,
   theme: "system",
+  button_display: "both",
+  ring_sort_mode: "custom",
+  ring_category_order: [],
+  ring_item_order: [],
   backup_preferences: {
     include_settings: true,
     automatic_enabled: false,
@@ -24,9 +30,9 @@ const elements = Object.fromEntries(
     "masterTab", "recoveryTab", "masterUnlockPanel", "recoveryUnlockPanel", "unlockMaster",
     "recoveryKey", "recoveryMaster", "recoveryConfirm", "vaultShell", "brandHome", "viewTitle",
     "newAction", "saveAction", "deleteAction", "menuButton", "appMenu", "lockButton", "qiringView",
-    "profilesView", "healthView", "backupsView", "settingsView", "itemCount", "searchInput",
+    "profilesView", "healthView", "backupsView", "settingsView", "itemCount", "ringSortMode", "expandCategories", "collapseCategories", "searchInput",
     "clearSearch", "itemList", "itemEditorTitle", "dirtyIndicator", "itemForm", "itemTitle", "itemType",
-    "itemFolder", "categoryOptions", "itemTags", "credentialFields", "itemUrl", "openUrlButton",
+    "itemFolder", "categoryOptions", "itemTags", "itemIconPreview", "itemIconPlaceholder", "uploadItemIcon", "fetchItemFavicon", "removeItemIcon", "credentialFields", "itemUrl", "openUrlButton",
     "itemUsername", "copyUsername", "itemPassword", "togglePassword", "copyPassword", "profileSelect",
     "generatePassword", "itemTotpSecret", "totpCode", "refreshTotp", "totpRemaining", "itemNotes",
     "questionSection", "addQuestion", "questionList", "historySection", "historyList", "profileCount",
@@ -35,13 +41,15 @@ const elements = Object.fromEntries(
     "testProfile", "profileTestOutput", "runHealth", "healthAnalyzed", "healthWeak", "healthReused",
     "healthOld", "healthIssues", "backupPassphrase", "exportBackup", "selectBackup", "selectedBackupPath",
     "restorePassphrase", "previewBackup", "restoreBackup", "backupPreview", "refreshSnapshots", "snapshotList",
-    "settingsForm", "autoLockMinutes", "clipboardSeconds", "lockOnMinimize", "lockOnBlur", "themeSelect",
+    "settingsForm", "autoLockMinutes", "clipboardSeconds", "lockOnMinimize", "lockOnBlur", "themeSelect", "buttonDisplaySelect",
     "automaticBackups", "includeSettings", "backupRetention", "backupDirectory", "chooseBackupDirectory",
     "oldMasterPassword", "newMasterPassword", "rotateMaster", "recoveryMasterPassword", "regenerateRecovery",
     "recoveryDialog", "recoveryKeyOutput", "recoveryFingerprint", "copyRecoveryKey", "saveRecoveryKey", "printRecoveryKey", "recoveryVerify", "recoveryAcknowledged",
-    "finishRecovery", "toastRegion"
+    "finishRecovery", "unsavedDialog", "unsavedDialogMessage", "stayOnPage", "discardAndContinue", "saveAndContinue", "toastRegion"
   ].map((id) => [id, byId(id)])
 );
+
+decorateButtons();
 
 const views = {
   qiring: elements.qiringView,
@@ -52,7 +60,7 @@ const views = {
 };
 
 const viewLabels = {
-  qiring: "Qi Ring",
+  qiring: "Vault",
   profiles: "Password Profiles",
   health: "Vault Health",
   backups: "Encrypted Backups",
@@ -78,7 +86,11 @@ const state = {
   lastActivityTouch: 0,
   searchSequence: 0,
   searchTimer: null,
-  collapsedCategories: new Set(),
+  expandedCategories: new Set(),
+  settings: null,
+  draggedOrder: null,
+  itemIconDataUrl: null,
+  unsavedDecisionResolver: null,
   unlocked: false
 };
 
@@ -124,6 +136,7 @@ function toast(message, { error = false, actionLabel = null, action = null, time
     className: "toast-close",
     text: "Dismiss",
     type: "button",
+    icon: "clear",
     attributes: { "aria-label": "Dismiss notification" }
   });
   close.addEventListener("click", removeToast);
@@ -174,9 +187,18 @@ function toast(message, { error = false, actionLabel = null, action = null, time
 
 async function busy(button, task) {
   const previousDisabled = button?.disabled ?? false;
+  const previousLabel = button?.dataset.label || button?.textContent;
+  const busyLabel = button?.dataset.busyLabel;
   if (button) {
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
+    if (busyLabel) {
+      setButtonLabel(button, busyLabel);
+      button.classList.add("is-busy");
+    }
+    await new Promise((resolve) => {
+      window.requestAnimationFrame(() => window.requestAnimationFrame(resolve));
+    });
   }
   try {
     return await task();
@@ -184,6 +206,10 @@ async function busy(button, task) {
     if (button) {
       button.disabled = previousDisabled;
       button.removeAttribute("aria-busy");
+      if (busyLabel) {
+        setButtonLabel(button, previousLabel);
+        button.classList.remove("is-busy");
+      }
     }
   }
 }
@@ -253,6 +279,13 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = theme === "light" || (theme === "system" && !systemDark) ? "light" : "dark";
 }
 
+function applyButtonDisplay(display) {
+  document.documentElement.dataset.buttonDisplay = new Set(["icons", "labels"]).has(display)
+    ? display
+    : "both";
+  refreshButtonTitles();
+}
+
 async function enterVault() {
   const [security, profiles, items, settings] = await Promise.all([
     vaultApi.securityStatus(),
@@ -265,14 +298,15 @@ async function enterVault() {
   }
   state.profiles = profiles;
   state.items = items;
+  fillSettings(settings);
   state.unlocked = true;
   setHidden(elements.authShell, true);
   setHidden(elements.vaultShell, false);
   applyTheme(settings.theme);
+  applyButtonDisplay(settings.button_display);
   renderProfiles();
   if (state.profiles[0]) selectProfile(state.profiles[0].id, { force: true });
   renderItems();
-  fillSettings(settings);
   newItem({ force: true });
   await navigate("qiring", { force: true });
 }
@@ -281,8 +315,48 @@ function hasUnsavedChanges() {
   return state.itemDirty || state.profileDirty || state.settingsDirty;
 }
 
-function confirmDiscard() {
-  return !hasUnsavedChanges() || window.confirm("Discard unsaved changes before continuing?");
+function askUnsavedDecision(message) {
+  elements.unsavedDialogMessage.textContent = message;
+  elements.unsavedDialog.showModal();
+  elements.saveAndContinue.focus();
+  return new Promise((resolve) => {
+    state.unsavedDecisionResolver = resolve;
+  });
+}
+
+function settleUnsavedDecision(decision) {
+  const resolve = state.unsavedDecisionResolver;
+  if (!resolve) return;
+  state.unsavedDecisionResolver = null;
+  elements.unsavedDialog.close();
+  resolve(decision);
+}
+
+async function saveCurrentView() {
+  if (state.view === "qiring") return saveItem();
+  if (state.view === "profiles") return saveProfile();
+  if (state.view === "settings") return saveSettings();
+  return true;
+}
+
+async function resolveUnsavedNavigation(nextView) {
+  if (!hasUnsavedChanges()) return true;
+  closeMenu();
+  const decision = await askUnsavedDecision(`Save your changes before opening ${viewLabels[nextView]}?`);
+  if (decision === "stay") return false;
+  if (decision === "discard") return true;
+  const saved = await saveCurrentView();
+  return Boolean(saved) && !hasUnsavedChanges();
+}
+
+async function resolveUnsavedLock() {
+  if (!hasUnsavedChanges()) return true;
+  closeMenu();
+  const decision = await askUnsavedDecision("Save your changes before locking?");
+  if (decision === "stay") return false;
+  if (decision === "discard") return true;
+  const saved = await saveCurrentView();
+  return Boolean(saved) && !hasUnsavedChanges();
 }
 
 async function navigate(view, { force = false } = {}) {
@@ -291,12 +365,13 @@ async function navigate(view, { force = false } = {}) {
     closeMenu();
     return;
   }
-  if (!force && view !== state.view && !confirmDiscard()) return;
+  if (!force && view !== state.view && !await resolveUnsavedNavigation(view)) return;
   remaskPassword();
   state.view = view;
   state.itemDirty = false;
   state.profileDirty = false;
   state.settingsDirty = false;
+  state.expandedCategories.clear();
   updateDirtyIndicators();
   for (const [name, section] of Object.entries(views)) setHidden(section, name !== view);
   elements.viewTitle.textContent = viewLabels[view];
@@ -324,7 +399,7 @@ function configureContextActions() {
   [elements.newAction, elements.saveAction, elements.deleteAction].forEach((button, index) => {
     const label = config[index];
     setHidden(button, !label);
-    if (label) button.textContent = label;
+    if (label) setButtonLabel(button, label);
   });
   updateContextActionState();
 }
@@ -379,43 +454,293 @@ function markSettingsDirty() {
   updateContextActionState();
 }
 
+const RING_SORT_MODES = Object.freeze({
+  custom: { label: "Custom", icon: "grip", next: "ascending", nextLabel: "A–Z" },
+  ascending: { label: "A–Z", icon: "sort_ascending", next: "descending", nextLabel: "Z–A" },
+  descending: { label: "Z–A", icon: "sort_descending", next: "custom", nextLabel: "Custom" }
+});
+
+function normalizedSettings(settings = {}) {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...settings,
+    ring_sort_mode: RING_SORT_MODES[settings.ring_sort_mode] ? settings.ring_sort_mode : "custom",
+    ring_category_order: Array.isArray(settings.ring_category_order) ? [...settings.ring_category_order] : [],
+    ring_item_order: Array.isArray(settings.ring_item_order) ? [...settings.ring_item_order] : [],
+    backup_preferences: {
+      ...DEFAULT_SETTINGS.backup_preferences,
+      ...(settings.backup_preferences || {})
+    }
+  };
+}
+
+function ringSortMode() {
+  return RING_SORT_MODES[state.settings?.ring_sort_mode] ? state.settings.ring_sort_mode : "custom";
+}
+
+function compareText(left, right) {
+  return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function compareItems(left, right) {
+  return compareText(left.title, right.title) || left.id.localeCompare(right.id);
+}
+
+function compareByCustomRank(ranks, leftId, rightId, fallback) {
+  const leftRank = ranks.get(leftId);
+  const rightRank = ranks.get(rightId);
+  if (leftRank !== undefined && rightRank !== undefined) return leftRank - rightRank;
+  if (leftRank !== undefined) return -1;
+  if (rightRank !== undefined) return 1;
+  return fallback();
+}
+
+function orderedCategoryNames(names) {
+  const mode = ringSortMode();
+  const ordered = [...names];
+  if (mode === "ascending") return ordered.sort(compareText);
+  if (mode === "descending") return ordered.sort((left, right) => compareText(right, left));
+  const customOrder = state.settings?.ring_category_order || [];
+  const ranks = new Map(customOrder.map((id, index) => [id, index]));
+  return ordered.sort((left, right) => compareByCustomRank(ranks, left, right, () => compareText(left, right)));
+}
+
+function orderedItems(items) {
+  const mode = ringSortMode();
+  const ordered = [...items];
+  if (mode === "ascending") return ordered.sort(compareItems);
+  if (mode === "descending") return ordered.sort((left, right) => compareItems(right, left));
+  const customOrder = state.settings?.ring_item_order || [];
+  const ranks = new Map(customOrder.map((id, index) => [id, index]));
+  return ordered.sort((left, right) => compareByCustomRank(ranks, left.id, right.id, () => compareItems(left, right)));
+}
+
+function renderRingSortControl() {
+  const mode = ringSortMode();
+  const metadata = RING_SORT_MODES[mode];
+  setButtonIcon(elements.ringSortMode, metadata.icon);
+  setButtonLabel(elements.ringSortMode, metadata.label);
+  elements.ringSortMode.setAttribute("aria-label", `Ring sort: ${metadata.label}. Activate for ${metadata.nextLabel}.`);
+  elements.ringSortMode.title = `Ring sort: ${metadata.label}. Next: ${metadata.nextLabel}.`;
+}
+
+async function updateRingPreferences(patch) {
+  const previous = normalizedSettings(state.settings || DEFAULT_SETTINGS);
+  state.settings = normalizedSettings({ ...previous, ...patch });
+  renderItems();
+  try {
+    await vaultApi.updateSettings(state.settings);
+  } catch (error) {
+    state.settings = previous;
+    renderItems();
+    throw error;
+  }
+}
+
+async function cycleRingSortMode() {
+  const mode = ringSortMode();
+  await busy(elements.ringSortMode, () => updateRingPreferences({ ring_sort_mode: RING_SORT_MODES[mode].next }));
+}
+
+function reorderRelative(order, draggedId, targetId, after) {
+  const next = order.filter((id) => id !== draggedId);
+  const targetIndex = next.indexOf(targetId);
+  if (targetIndex < 0) return order;
+  next.splice(targetIndex + (after ? 1 : 0), 0, draggedId);
+  return next;
+}
+
+function currentCategoryOrder() {
+  return orderedCategoryNames(new Set(state.items.map((item) => item.folder || "Uncategorized")));
+}
+
+function currentItemOrder() {
+  return orderedItems(state.items).map((item) => item.id);
+}
+
+async function moveCustomOrder(kind, draggedId, targetId, after, { restoreFocus = false } = {}) {
+  if (ringSortMode() !== "custom" || draggedId === targetId) return;
+  const key = kind === "category" ? "ring_category_order" : "ring_item_order";
+  const order = kind === "category" ? currentCategoryOrder() : currentItemOrder();
+  await updateRingPreferences({ [key]: reorderRelative(order, draggedId, targetId, after) });
+  if (restoreFocus) {
+    document.querySelector(`.drag-handle[data-order-kind="${kind}"][data-order-id="${CSS.escape(draggedId)}"]`)?.focus();
+  }
+}
+
+function createDragHandle(kind, id, label, peers) {
+  const focusable = peers.focusable !== false;
+  const handle = createElement("span", {
+    className: "drag-handle",
+    attributes: {
+      draggable: "true",
+      title: `Drag to reorder ${label}`,
+      "data-order-kind": kind,
+      "data-order-id": id
+    }
+  });
+  if (focusable) {
+    handle.setAttribute("role", "button");
+    handle.setAttribute("tabindex", "0");
+    handle.setAttribute("aria-label", `Move ${label}`);
+  } else {
+    handle.setAttribute("aria-hidden", "true");
+  }
+  handle.append(createIcon("grip"));
+  handle.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  handle.addEventListener("dragstart", (event) => {
+    state.draggedOrder = { kind, id, category: kind === "item" ? peers.category : null };
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", `${kind}:${id}`);
+    handle.classList.add("dragging");
+    document.body.classList.add("is-dragging-order");
+  });
+  handle.addEventListener("dragend", () => {
+    state.draggedOrder = null;
+    handle.classList.remove("dragging");
+    document.body.classList.remove("is-dragging-order");
+    document.querySelectorAll(".drop-before, .drop-after").forEach((node) => node.classList.remove("drop-before", "drop-after"));
+  });
+  if (focusable) {
+    handle.addEventListener("keydown", (event) => {
+      if (!new Set(["ArrowUp", "ArrowDown", "Home", "End"]).has(event.key)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const ids = peers.ids();
+      const index = ids.indexOf(id);
+      if (index < 0) return;
+      const targetIndex = event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? ids.length - 1
+          : index + (event.key === "ArrowUp" ? -1 : 1);
+      if (targetIndex < 0 || targetIndex >= ids.length || targetIndex === index) return;
+      moveCustomOrder(kind, id, ids[targetIndex], event.key === "ArrowDown" || event.key === "End", { restoreFocus: true })
+        .catch((error) => toast(errorMessage(error), { error: true }));
+    });
+  }
+  return handle;
+}
+
+function attachCategoryKeyboardReordering(summary, category) {
+  summary.title = `Category ${category}. Use Alt+Up/Down or Alt+Home/End to reorder.`;
+  summary.addEventListener("keydown", (event) => {
+    if (!event.altKey || !new Set(["ArrowUp", "ArrowDown", "Home", "End"]).has(event.key)) return;
+    event.preventDefault();
+    const ids = currentCategoryOrder();
+    const index = ids.indexOf(category);
+    const targetIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? ids.length - 1
+        : index + (event.key === "ArrowUp" ? -1 : 1);
+    if (index < 0 || targetIndex < 0 || targetIndex >= ids.length || targetIndex === index) return;
+    moveCustomOrder("category", category, ids[targetIndex], event.key === "ArrowDown" || event.key === "End")
+      .then(() => document.querySelector(`.category-group[data-category="${CSS.escape(category)}"] > summary`)?.focus())
+      .catch((error) => toast(errorMessage(error), { error: true }));
+  });
+}
+
+function attachDropTarget(target, kind, id, category = null) {
+  const accepts = () => state.draggedOrder?.kind === kind
+    && state.draggedOrder.id !== id
+    && (kind !== "item" || state.draggedOrder.category === category);
+  target.addEventListener("dragover", (event) => {
+    if (!accepts()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    const after = event.clientY >= target.getBoundingClientRect().top + target.getBoundingClientRect().height / 2;
+    target.classList.toggle("drop-before", !after);
+    target.classList.toggle("drop-after", after);
+  });
+  target.addEventListener("dragleave", () => target.classList.remove("drop-before", "drop-after"));
+  target.addEventListener("drop", (event) => {
+    if (!accepts()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const dragged = state.draggedOrder;
+    const after = target.classList.contains("drop-after");
+    target.classList.remove("drop-before", "drop-after");
+    moveCustomOrder(kind, dragged.id, id, after).catch((error) => toast(errorMessage(error), { error: true }));
+  });
+}
+
 function renderItems() {
   elements.itemList.replaceChildren();
   elements.itemCount.textContent = String(state.items.length);
+  renderRingSortControl();
   const categories = new Map();
   for (const item of state.items) {
     const category = item.folder || "Uncategorized";
     if (!categories.has(category)) categories.set(category, []);
     categories.get(category).push(item);
   }
-  for (const [category, items] of [...categories.entries()].sort(([left], [right]) => left.localeCompare(right))) {
-    const group = createElement("details", { className: "category-group" });
-    group.open = Boolean(elements.searchInput.value.trim()) || !state.collapsedCategories.has(category);
+  const searching = Boolean(elements.searchInput.value.trim());
+  const categoryNames = [...categories.keys()];
+  const customSortable = ringSortMode() === "custom" && !searching;
+  const expandedCount = categoryNames.filter((category) => state.expandedCategories.has(category)).length;
+  elements.ringSortMode.disabled = categories.size === 0;
+  elements.expandCategories.disabled = categories.size === 0 || searching || expandedCount === categories.size;
+  elements.collapseCategories.disabled = categories.size === 0 || searching || expandedCount === 0;
+  for (const category of orderedCategoryNames(categoryNames)) {
+    const items = categories.get(category);
+    const group = createElement("details", {
+      className: "category-group",
+      attributes: { "data-category": category }
+    });
+    group.open = searching || state.expandedCategories.has(category);
     const summary = createElement("summary", { className: "category-summary" });
+    if (customSortable) {
+      group.classList.add("sortable");
+      summary.append(createDragHandle("category", category, `category ${category}`, {
+        ids: currentCategoryOrder,
+        focusable: false
+      }));
+      attachCategoryKeyboardReordering(summary, category);
+      attachDropTarget(group, "category", category);
+    }
     summary.append(
       createElement("span", { className: "category-chevron", text: "›", attributes: { "aria-hidden": "true" } }),
       createElement("strong", { text: category }),
       createElement("span", { className: "category-count", text: String(items.length), attributes: { "aria-label": `${items.length} entries` } })
     );
     const entries = createElement("div", { className: "category-items" });
-    for (const item of items.sort((left, right) => left.title.localeCompare(right.title))) {
+    for (const item of orderedItems(items)) {
+      const row = createElement("div", { className: `category-item-row${customSortable ? " sortable" : ""}` });
+      if (customSortable) {
+        row.append(createDragHandle("item", item.id, `Qi ${item.title}`, {
+          category,
+          ids: () => orderedItems(categories.get(category) || []).map((candidate) => candidate.id)
+        }));
+        attachDropTarget(row, "item", item.id, category);
+      }
       const button = createElement("button", { className: "master-list-item", type: "button" });
       button.classList.toggle("active", item.id === state.selectedItemId);
       button.setAttribute("aria-pressed", String(item.id === state.selectedItemId));
-      button.append(
-        createElement("strong", { text: item.title }),
-        createElement("small", {
-          text: `${item.item_type === "secure_note" ? "SECURE NOTE" : item.username || "LOGIN"}${item.has_totp ? " · TOTP" : ""}`
-        })
-      );
-      button.addEventListener("click", () => selectItem(item.id));
-      entries.append(button);
+      const icon = createElement("span", {
+        className: `list-icon${item.icon_data_url ? "" : " placeholder"}`,
+        attributes: { "aria-hidden": "true" }
+      });
+      if (item.icon_data_url) {
+        const image = createElement("img", { attributes: { src: item.icon_data_url, alt: "", width: "28", height: "28" } });
+        icon.append(image);
+      } else {
+        icon.textContent = item.title.trim().slice(0, 1).toLocaleUpperCase() || "QI";
+      }
+      button.append(icon, createElement("strong", { text: item.title }));
+      button.addEventListener("click", runSafely(() => selectItem(item.id)));
+      row.append(button);
+      entries.append(row);
     }
     group.append(summary, entries);
     group.addEventListener("toggle", (event) => {
       if (!event.isTrusted) return;
-      if (group.open) state.collapsedCategories.delete(category);
-      else state.collapsedCategories.add(category);
+      if (group.open) state.expandedCategories.add(category);
+      else state.expandedCategories.delete(category);
     });
     elements.itemList.append(group);
   }
@@ -428,6 +753,14 @@ function renderItems() {
     option.value = folder;
     return option;
   }));
+}
+
+function setAllCategoriesExpanded(expanded) {
+  state.expandedCategories.clear();
+  if (expanded) {
+    for (const item of state.items) state.expandedCategories.add(item.folder || "Uncategorized");
+  }
+  renderItems();
 }
 
 async function refreshItems() {
@@ -452,6 +785,7 @@ function newItem({ force = false } = {}) {
   state.selectedItemId = null;
   elements.itemForm.reset();
   elements.itemType.value = "login";
+  setItemIcon(null);
   elements.questionList.replaceChildren();
   elements.historyList.replaceChildren();
   elements.historySection.hidden = true;
@@ -469,7 +803,13 @@ function newItem({ force = false } = {}) {
 }
 
 async function selectItem(id, { force = false } = {}) {
-  if (!force && state.itemDirty && !window.confirm("Discard changes to the current Qi entry?")) return;
+  if (!force && id === state.selectedItemId) return true;
+  if (!force && state.itemDirty) {
+    const target = state.items.find((item) => item.id === id);
+    const decision = await askUnsavedDecision(`Save your changes before opening “${target?.title || "this Qi"}”?`);
+    if (decision === "stay") return false;
+    if (decision === "save" && (!await saveItem() || state.itemDirty)) return false;
+  }
   const item = await busy(null, () => vaultApi.getItem(id));
   state.suppressDirty = true;
   state.selectedItemId = id;
@@ -477,6 +817,7 @@ async function selectItem(id, { force = false } = {}) {
   elements.itemType.value = item.item_type;
   elements.itemFolder.value = item.folder || "";
   elements.itemTags.value = (item.tags || []).join(", ");
+  setItemIcon(item.icon_data_url || null);
   elements.itemUrl.value = item.url || "";
   elements.itemUsername.value = item.username || "";
   elements.itemPassword.value = item.password || "";
@@ -493,12 +834,38 @@ async function selectItem(id, { force = false } = {}) {
   remaskPassword();
   renderItems();
   updateContextActionState();
+  return true;
 }
 
 function updateItemTypeFields() {
   const isLogin = elements.itemType.value === "login";
   elements.credentialFields.hidden = !isLogin;
   elements.questionSection.hidden = !isLogin;
+  elements.fetchItemFavicon.disabled = !isLogin;
+}
+
+function setItemIcon(dataUrl, { dirty = false } = {}) {
+  state.itemIconDataUrl = dataUrl || null;
+  elements.itemIconPreview.src = dataUrl || "";
+  elements.itemIconPreview.hidden = !dataUrl;
+  elements.itemIconPlaceholder.hidden = Boolean(dataUrl);
+  elements.removeItemIcon.disabled = !dataUrl;
+  if (dirty) markItemDirty();
+}
+
+async function uploadItemIcon() {
+  const dataUrl = await busy(elements.uploadItemIcon, () => vaultApi.selectItemIcon());
+  if (!dataUrl) return;
+  setItemIcon(dataUrl, { dirty: true });
+  toast("Qi icon added to the editor. Save Qi to encrypt it in the vault.");
+}
+
+async function fetchItemFavicon() {
+  const url = elements.itemUrl.value.trim();
+  if (!url) throw new Error("Enter the website URL before importing its favicon.");
+  const dataUrl = await busy(elements.fetchItemFavicon, () => vaultApi.fetchFavicon(url));
+  setItemIcon(dataUrl, { dirty: true });
+  toast("Website favicon added to the editor. Save Qi to encrypt it in the vault.");
 }
 
 function collectQuestions() {
@@ -523,9 +890,9 @@ function addQuestionRow(question = { question: "", answer: "" }) {
     attributes: { "aria-label": "Security answer", maxlength: "4096", placeholder: "Answer", autocomplete: "off" }
   });
   answerInput.value = question.answer || "";
-  const copyButton = createElement("button", { className: "secondary", text: "Copy", type: "button" });
+  const copyButton = createElement("button", { className: "secondary", text: "Copy", type: "button", icon: "copy" });
   copyButton.addEventListener("click", () => copySecret(answerInput.value, "Security answer"));
-  const removeButton = createElement("button", { className: "danger remove-question", text: "Remove", type: "button" });
+  const removeButton = createElement("button", { className: "danger remove-question", text: "Remove", type: "button", icon: "trash" });
   removeButton.addEventListener("click", () => {
     row.remove();
     markItemDirty();
@@ -544,9 +911,9 @@ function renderHistory(history) {
       createElement("code", { text: "••••••••••••" }),
       createElement("small", { text: formatDate(entry.changed_at) })
     );
-    const copy = createElement("button", { className: "secondary compact", text: "Copy", type: "button" });
+    const copy = createElement("button", { className: "secondary compact", text: "Copy", type: "button", icon: "copy" });
     copy.addEventListener("click", () => copySecret(entry.password, "Historical password"));
-    const restore = createElement("button", { className: "secondary compact", text: "Restore", type: "button" });
+    const restore = createElement("button", { className: "secondary compact", text: "Restore", type: "button", icon: "undo" });
     restore.addEventListener("click", () => {
       elements.itemPassword.value = entry.password;
       markItemDirty();
@@ -558,7 +925,7 @@ function renderHistory(history) {
 }
 
 async function saveItem() {
-  if (!elements.itemForm.reportValidity()) return;
+  if (!elements.itemForm.reportValidity()) return false;
   const input = {
     item_type: elements.itemType.value,
     title: elements.itemTitle.value.trim(),
@@ -568,6 +935,7 @@ async function saveItem() {
     notes: elements.itemNotes.value || null,
     tags: elements.itemTags.value.split(",").map((tag) => tag.trim()).filter(Boolean),
     folder: elements.itemFolder.value.trim() || null,
+    icon_data_url: state.itemIconDataUrl,
     security_questions: elements.itemType.value === "login" ? collectQuestions() : [],
     totp_secret: elements.itemType.value === "login" ? elements.itemTotpSecret.value.trim() || null : null
   };
@@ -581,6 +949,7 @@ async function saveItem() {
         notes: input.notes,
         tags: input.tags,
         folder: input.folder,
+        icon_data_url: input.icon_data_url,
         security_questions: input.security_questions,
         totp_secret: input.totp_secret
       });
@@ -592,6 +961,7 @@ async function saveItem() {
   await refreshItems();
   await selectItem(id, { force: true });
   toast("Qi saved to the encrypted vault.");
+  return true;
 }
 
 async function deleteItem() {
@@ -613,7 +983,8 @@ async function deleteItem() {
 
 function remaskPassword() {
   elements.itemPassword.type = "password";
-  elements.togglePassword.textContent = "Show";
+  setButtonIcon(elements.togglePassword, "eye");
+  setButtonLabel(elements.togglePassword, "Show");
   elements.togglePassword.setAttribute("aria-pressed", "false");
   elements.itemTotpSecret.type = "password";
 }
@@ -621,7 +992,8 @@ function remaskPassword() {
 function togglePasswordVisibility() {
   const visible = elements.itemPassword.type === "password";
   elements.itemPassword.type = visible ? "text" : "password";
-  elements.togglePassword.textContent = visible ? "Hide" : "Show";
+  setButtonIcon(elements.togglePassword, visible ? "eye_off" : "eye");
+  setButtonLabel(elements.togglePassword, visible ? "Hide" : "Show");
   elements.togglePassword.setAttribute("aria-pressed", String(visible));
 }
 
@@ -688,10 +1060,7 @@ function renderProfiles() {
     const button = createElement("button", { className: "master-list-item", type: "button" });
     button.classList.toggle("active", profile.id === state.selectedProfileId);
     button.setAttribute("aria-pressed", String(profile.id === state.selectedProfileId));
-    button.append(
-      createElement("strong", { text: profile.name }),
-      createElement("small", { text: `${profile.policy.length} CHARACTERS` })
-    );
+    button.append(createElement("strong", { text: profile.name }));
     button.addEventListener("click", () => selectProfile(profile.id));
     elements.profileList.append(button);
   }
@@ -765,13 +1134,14 @@ function profileFromForm() {
 }
 
 async function saveProfile() {
-  if (!elements.profileForm.reportValidity()) return;
+  if (!elements.profileForm.reportValidity()) return false;
   const id = await busy(elements.saveAction, () => vaultApi.saveProfile(profileFromForm()));
   state.profiles = await vaultApi.listProfiles();
   state.profileDirty = false;
   selectProfile(id, { force: true });
   renderProfiles();
   toast("Password profile saved inside the encrypted vault.");
+  return true;
 }
 
 async function deleteProfile() {
@@ -806,7 +1176,7 @@ async function runHealthAnalysis() {
       createElement("strong", { text: issue.title }),
       createElement("p", { text: issue.detail })
     );
-    const open = createElement("button", { className: "secondary compact", text: "Open Qi", type: "button" });
+    const open = createElement("button", { className: "secondary compact", text: "Open Qi", type: "button", icon: "external" });
     open.addEventListener("click", async () => {
       await navigate("qiring", { force: true });
       await selectItem(issue.item_id, { force: true });
@@ -820,16 +1190,19 @@ async function runHealthAnalysis() {
 }
 
 function fillSettings(settings) {
+  const normalized = normalizedSettings(settings);
+  state.settings = normalized;
   state.suppressDirty = true;
-  elements.autoLockMinutes.value = String(settings.auto_lock_minutes);
-  elements.clipboardSeconds.value = String(settings.clipboard_clear_seconds);
-  elements.lockOnMinimize.checked = settings.lock_on_minimize;
-  elements.lockOnBlur.checked = settings.lock_on_window_blur;
-  elements.themeSelect.value = settings.theme;
-  elements.automaticBackups.checked = settings.backup_preferences.automatic_enabled;
-  elements.includeSettings.checked = settings.backup_preferences.include_settings;
-  elements.backupRetention.value = String(settings.backup_preferences.retention_count);
-  elements.backupDirectory.value = settings.backup_preferences.directory || "";
+  elements.autoLockMinutes.value = String(normalized.auto_lock_minutes);
+  elements.clipboardSeconds.value = String(normalized.clipboard_clear_seconds);
+  elements.lockOnMinimize.checked = normalized.lock_on_minimize;
+  elements.lockOnBlur.checked = normalized.lock_on_window_blur;
+  elements.themeSelect.value = normalized.theme;
+  elements.buttonDisplaySelect.value = normalized.button_display;
+  elements.automaticBackups.checked = normalized.backup_preferences.automatic_enabled;
+  elements.includeSettings.checked = normalized.backup_preferences.include_settings;
+  elements.backupRetention.value = String(normalized.backup_preferences.retention_count);
+  elements.backupDirectory.value = normalized.backup_preferences.directory || "";
   state.settingsDirty = false;
   state.suppressDirty = false;
   updateContextActionState();
@@ -847,6 +1220,10 @@ function settingsFromForm() {
     lock_on_minimize: elements.lockOnMinimize.checked,
     biometric_enabled: false,
     theme: elements.themeSelect.value,
+    button_display: elements.buttonDisplaySelect.value,
+    ring_sort_mode: state.settings?.ring_sort_mode || "custom",
+    ring_category_order: [...(state.settings?.ring_category_order || [])],
+    ring_item_order: [...(state.settings?.ring_item_order || [])],
     backup_preferences: {
       include_settings: elements.includeSettings.checked,
       automatic_enabled: elements.automaticBackups.checked,
@@ -857,16 +1234,19 @@ function settingsFromForm() {
 }
 
 async function saveSettings() {
-  if (!elements.settingsForm.reportValidity()) return;
+  if (!elements.settingsForm.reportValidity()) return false;
   const settings = settingsFromForm();
   if (settings.backup_preferences.automatic_enabled && !settings.backup_preferences.directory) {
     throw new Error("Choose a directory before enabling automatic snapshots.");
   }
   await busy(elements.saveAction, () => vaultApi.updateSettings(settings));
+  state.settings = normalizedSettings(settings);
   state.settingsDirty = false;
   applyTheme(settings.theme);
+  applyButtonDisplay(settings.button_display);
   updateContextActionState();
   toast("Encrypted vault settings saved and enforced.");
+  return true;
 }
 
 async function chooseBackupDirectory() {
@@ -948,7 +1328,7 @@ async function refreshSnapshots() {
       createElement("small", { text: snapshot.path }),
       createElement("span", { text: `${formatDate(snapshot.created_at)} · ${formatBytes(snapshot.size_bytes)}` })
     );
-    const restore = createElement("button", { className: "danger compact", text: "Restore", type: "button" });
+    const restore = createElement("button", { className: "danger compact", text: "Restore", type: "button", icon: "undo" });
     restore.addEventListener("click", async () => {
       try {
         if (!window.confirm("Restore this automatic snapshot and replace the current vault? QiRing will lock.")) return;
@@ -977,6 +1357,9 @@ function resetSessionUi() {
   state.itemDirty = false;
   state.profileDirty = false;
   state.settingsDirty = false;
+  state.expandedCategories.clear();
+  state.settings = null;
+  state.draggedOrder = null;
   state.selectedBackupToken = null;
   state.backupPreviewed = false;
   elements.toastRegion.replaceChildren();
@@ -985,22 +1368,21 @@ function resetSessionUi() {
   elements.itemList.replaceChildren();
   elements.profileList.replaceChildren();
   elements.itemForm.reset();
+  setItemIcon(null);
   elements.profileForm.reset();
 }
 
 async function lockVault({ force = false } = {}) {
-  if (!force && hasUnsavedChanges() && !window.confirm("Lock the vault and discard unsaved changes?")) return;
+  if (!force && !await resolveUnsavedLock()) return;
   await vaultApi.lock();
   resetSessionUi();
   setAuthScreen("unlock");
-  toast("Vault locked and any QiRing-owned clipboard value was cleared.");
 }
 
-async function handleBackendLock(event) {
+async function handleBackendLock() {
   if (!state.unlocked) return;
   resetSessionUi();
   setAuthScreen("unlock");
-  toast(event.payload === "idle" ? "Vault locked after inactivity." : "Vault locked by window security policy.");
 }
 
 async function handleContextAction(kind) {
@@ -1046,25 +1428,27 @@ elements.createForm.addEventListener("submit", runSafely(async () => {
 }, true));
 
 elements.masterUnlockPanel.addEventListener("submit", runSafely(async () => {
-  const result = await busy(elements.masterUnlockPanel.querySelector("button[type=submit]"), () =>
-    vaultApi.unlockMaster(elements.unlockMaster.value)
-  );
-  elements.unlockMaster.value = "";
-  await enterVault();
+  const button = elements.masterUnlockPanel.querySelector("button[type=submit]");
+  const result = await busy(button, async () => {
+    const unlocked = await vaultApi.unlockMaster(elements.unlockMaster.value);
+    elements.unlockMaster.value = "";
+    await enterVault();
+    return unlocked;
+  });
   if (result.migrated_recovery) {
     showRecoveryCeremony(result.migrated_recovery, async () => toast("Legacy vault migrated to authenticated schema v2."));
-  } else {
-    toast("Vault unlocked.");
   }
 }, true));
 
 elements.recoveryUnlockPanel.addEventListener("submit", runSafely(async () => {
   if (elements.recoveryMaster.value !== elements.recoveryConfirm.value) throw new Error("New master password confirmation does not match.");
-  const result = await busy(elements.recoveryUnlockPanel.querySelector("button[type=submit]"), () =>
-    vaultApi.unlockRecovery(elements.recoveryKey.value, elements.recoveryMaster.value)
-  );
-  elements.recoveryUnlockPanel.reset();
-  await enterVault();
+  const button = elements.recoveryUnlockPanel.querySelector("button[type=submit]");
+  const result = await busy(button, async () => {
+    const recovered = await vaultApi.unlockRecovery(elements.recoveryKey.value, elements.recoveryMaster.value);
+    elements.recoveryUnlockPanel.reset();
+    await enterVault();
+    return recovered;
+  });
   showRecoveryCeremony(result.recovery, async () => toast("Vault recovered. Master and recovery credentials were rotated."));
 }, true));
 
@@ -1087,6 +1471,13 @@ elements.recoveryAcknowledged.addEventListener("change", updateRecoveryReady);
 elements.recoveryVerify.addEventListener("input", updateRecoveryReady);
 elements.finishRecovery.addEventListener("click", runSafely(finishRecoveryCeremony));
 elements.recoveryDialog.addEventListener("cancel", (event) => event.preventDefault());
+elements.unsavedDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  settleUnsavedDecision("stay");
+});
+elements.stayOnPage.addEventListener("click", () => settleUnsavedDecision("stay"));
+elements.discardAndContinue.addEventListener("click", () => settleUnsavedDecision("discard"));
+elements.saveAndContinue.addEventListener("click", () => settleUnsavedDecision("save"));
 elements.copyRecoveryKey.addEventListener("click", runSafely(() => copySecret(elements.recoveryKeyOutput.textContent, "Recovery key")));
 elements.saveRecoveryKey.addEventListener("click", runSafely(saveRecoveryKey));
 elements.printRecoveryKey.addEventListener("click", () => window.print());
@@ -1104,7 +1495,7 @@ elements.appMenu.addEventListener("keydown", (event) => {
   event.preventDefault();
   buttons[next]?.focus();
 });
-elements.brandHome.addEventListener("click", () => navigate("qiring"));
+elements.brandHome.addEventListener("click", runSafely(() => navigate("qiring")));
 elements.appMenu.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => runSafely(() => navigate(button.dataset.view))()));
 elements.lockButton.addEventListener("click", runSafely(lockVault));
 elements.newAction.addEventListener("click", runSafely(() => handleContextAction("new")));
@@ -1118,7 +1509,13 @@ elements.addQuestion.addEventListener("click", () => {
   addQuestionRow();
   markItemDirty();
 });
+elements.uploadItemIcon.addEventListener("click", runSafely(uploadItemIcon));
+elements.fetchItemFavicon.addEventListener("click", runSafely(fetchItemFavicon));
+elements.removeItemIcon.addEventListener("click", () => setItemIcon(null, { dirty: true }));
 elements.searchInput.addEventListener("input", scheduleSearch);
+elements.ringSortMode.addEventListener("click", runSafely(cycleRingSortMode));
+elements.expandCategories.addEventListener("click", () => setAllCategoriesExpanded(true));
+elements.collapseCategories.addEventListener("click", () => setAllCategoriesExpanded(false));
 elements.clearSearch.addEventListener("click", runSafely(async () => {
   elements.searchInput.value = "";
   await refreshItems();
@@ -1142,6 +1539,7 @@ elements.chooseBackupDirectory.addEventListener("click", runSafely(chooseBackupD
 elements.rotateMaster.addEventListener("click", runSafely(rotateMasterPassword));
 elements.regenerateRecovery.addEventListener("click", runSafely(regenerateRecovery));
 elements.themeSelect.addEventListener("change", () => applyTheme(elements.themeSelect.value));
+elements.buttonDisplaySelect.addEventListener("change", () => applyButtonDisplay(elements.buttonDisplaySelect.value));
 elements.backupPassphrase.addEventListener("input", updateContextActionState);
 
 elements.exportBackup.addEventListener("click", runSafely(exportBackup));

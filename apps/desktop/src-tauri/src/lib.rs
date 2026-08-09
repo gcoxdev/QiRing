@@ -1,4 +1,5 @@
 use anyhow::Context;
+use base64::Engine;
 use qiring_core::{
     AppSettings, BackupManifest, BackupPreview, BackupSnapshot, GeneratedPassword, HealthReport,
     ImportReport, ItemInput, ItemPatch, ItemSummary, ListFilter, PasswordPolicy, PasswordProfile,
@@ -9,10 +10,12 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
+use std::io::Read;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WindowEvent};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
@@ -24,17 +27,36 @@ struct AppState {
     clipboard: Arc<ClipboardGuard>,
     selected_backups: Arc<Mutex<HashMap<String, PathBuf>>>,
     approved_backup_directories: Arc<Mutex<HashSet<PathBuf>>>,
+    window_bounds: Arc<WindowBoundsGuard>,
 }
 
 impl AppState {
-    fn new(vault_path: PathBuf) -> Self {
+    fn new(vault_path: PathBuf, window_state_path: PathBuf) -> Self {
         Self {
             service: Arc::new(Mutex::new(VaultService::new(vault_path))),
             clipboard: Arc::new(ClipboardGuard::default()),
             selected_backups: Arc::new(Mutex::new(HashMap::new())),
             approved_backup_directories: Arc::new(Mutex::new(HashSet::new())),
+            window_bounds: Arc::new(WindowBoundsGuard {
+                path: window_state_path,
+                current: Mutex::new(None),
+            }),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, serde::Deserialize, Serialize)]
+struct PersistedWindowBounds {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    maximized: bool,
+}
+
+struct WindowBoundsGuard {
+    path: PathBuf,
+    current: Mutex<Option<PersistedWindowBounds>>,
 }
 
 #[derive(Default)]
@@ -59,6 +81,10 @@ struct SelectedBackup {
     token: String,
     display_path: String,
 }
+
+const MAX_QI_ICON_BYTES: usize = 512 * 1024;
+const WINDOW_MIN_WIDTH: u32 = 800;
+const WINDOW_MIN_HEIGHT: u32 = 600;
 
 #[tauri::command]
 fn create_vault(
@@ -276,6 +302,41 @@ async fn choose_backup_directory(
 }
 
 #[tauri::command]
+async fn select_item_icon_dialog(app: AppHandle) -> Result<Option<String>, String> {
+    let picker = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let selection = picker
+            .dialog()
+            .file()
+            .set_title("Choose a Qi icon")
+            .add_filter("Image", &["png", "jpg", "jpeg", "webp", "gif", "ico"])
+            .blocking_pick_file();
+        let Some(selection) = selection else {
+            return Ok(None);
+        };
+        let path = selection
+            .into_path()
+            .map_err(|error| format!("selected image is not a local path: {error}"))?;
+        let metadata =
+            fs::metadata(&path).map_err(|error| format!("could not inspect the selected image: {error}"))?;
+        if metadata.len() > MAX_QI_ICON_BYTES as u64 {
+            return Err("Qi icons are limited to 512 KiB. Choose a smaller image.".into());
+        }
+        let bytes = fs::read(&path).map_err(|error| format!("could not read the selected image: {error}"))?;
+        image_data_url(&bytes).map(Some)
+    })
+    .await
+    .map_err(|error| format!("Qi icon dialog failed: {error}"))?
+}
+
+#[tauri::command]
+async fn fetch_favicon(url: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || fetch_favicon_data_url(&url))
+        .await
+        .map_err(|error| format!("favicon task failed: {error}"))?
+}
+
+#[tauri::command]
 async fn export_backup_dialog(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -439,10 +500,17 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let vault_path = resolve_vault_path(app)?;
-            let state = AppState::new(vault_path);
+            let window_state_path = app.path().app_config_dir()?.join("window-state.json");
+            let state = AppState::new(vault_path, window_state_path);
             let background_state = state.clone();
             let app_handle = app.handle().clone();
             app.manage(state);
+
+            if let Some(window) = app.get_webview_window("main") {
+                let bounds = app.state::<AppState>().window_bounds.clone();
+                restore_window_bounds(&window, &bounds);
+                capture_window_bounds(&window.as_ref().window(), &bounds);
+            }
 
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(1));
@@ -484,6 +552,8 @@ pub fn run() {
             update_settings,
             health_report,
             choose_backup_directory,
+            select_item_icon_dialog,
+            fetch_favicon,
             export_backup_dialog,
             select_backup_file,
             preview_selected_backup,
@@ -501,6 +571,16 @@ pub fn run() {
 
 fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
     let state = window.state::<AppState>();
+    match event {
+        WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
+            capture_window_bounds(window, &state.window_bounds);
+        }
+        WindowEvent::CloseRequested { .. } => {
+            capture_window_bounds(window, &state.window_bounds);
+            persist_window_bounds(&state.window_bounds);
+        }
+        _ => {}
+    }
     let should_lock = match event {
         WindowEvent::Focused(false) => state
             .service
@@ -525,6 +605,273 @@ fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
         clear_ephemeral_authorizations(&state);
         let _ = window.app_handle().emit("vault-locked", "window");
     }
+}
+
+fn image_data_url(bytes: &[u8]) -> Result<String, String> {
+    if bytes.is_empty() || bytes.len() > MAX_QI_ICON_BYTES {
+        return Err("Qi icons must be non-empty and no larger than 512 KiB.".into());
+    }
+    let media_type = sniff_image_media_type(bytes)
+        .ok_or_else(|| "Qi icons must contain a valid PNG, JPEG, WebP, GIF, or ICO image.".to_string())?;
+    Ok(format!(
+        "data:{media_type};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+fn sniff_image_media_type(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else if bytes.starts_with(&[0, 0, 1, 0]) {
+        Some("image/x-icon")
+    } else {
+        None
+    }
+}
+
+fn fetch_favicon_data_url(raw_url: &str) -> Result<String, String> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let mut target = reqwest::Url::parse(raw_url)
+        .map_err(|_| "Enter a complete website URL beginning with http:// or https://.".to_string())?;
+    validate_favicon_url(&target)?;
+    target.set_path("/favicon.ico");
+    target.set_query(None);
+    target.set_fragment(None);
+
+    for _ in 0..=4 {
+        let (host, endpoint) = resolve_public_endpoint(&target)?;
+        let mut builder = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(Duration::from_secs(4))
+            .timeout(Duration::from_secs(8))
+            .user_agent("QiRing/0.1 favicon import");
+        if host.parse::<IpAddr>().is_err() {
+            builder = builder.resolve(&host, endpoint);
+        }
+        let client = builder
+            .build()
+            .map_err(|error| format!("could not initialize the favicon client: {error}"))?;
+        let response = client
+            .get(target.clone())
+            .send()
+            .map_err(|error| format!("could not fetch the website favicon: {error}"))?;
+
+        if response.status().is_redirection() {
+            let location = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .ok_or_else(|| "The favicon redirect did not provide a valid destination.".to_string())?;
+            target = target
+                .join(location)
+                .map_err(|_| "The favicon redirected to an invalid URL.".to_string())?;
+            validate_favicon_url(&target)?;
+            continue;
+        }
+        if !response.status().is_success() {
+            return Err(format!(
+                "The website did not provide a favicon (HTTP {}).",
+                response.status().as_u16()
+            ));
+        }
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_QI_ICON_BYTES as u64)
+        {
+            return Err("The website favicon is larger than 512 KiB.".into());
+        }
+        let mut bytes = Vec::new();
+        response
+            .take((MAX_QI_ICON_BYTES + 1) as u64)
+            .read_to_end(&mut bytes)
+            .map_err(|error| format!("could not read the website favicon: {error}"))?;
+        if bytes.len() > MAX_QI_ICON_BYTES {
+            return Err("The website favicon is larger than 512 KiB.".into());
+        }
+        return image_data_url(&bytes);
+    }
+    Err("The website favicon redirected too many times.".into())
+}
+
+fn validate_favicon_url(url: &reqwest::Url) -> Result<(), String> {
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("Favicon import only supports HTTP and HTTPS websites.".into());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("Website URLs containing embedded credentials are not supported.".into());
+    }
+    if url.host_str().is_none() {
+        return Err("The website URL does not contain a host.".into());
+    }
+    let port = url
+        .port_or_known_default()
+        .ok_or_else(|| "The website URL does not use a supported port.".to_string())?;
+    if !matches!(port, 80 | 443) {
+        return Err("Favicon import is limited to standard HTTP and HTTPS ports.".into());
+    }
+    Ok(())
+}
+
+fn resolve_public_endpoint(url: &reqwest::Url) -> Result<(String, SocketAddr), String> {
+    validate_favicon_url(url)?;
+    let host = url.host_str().expect("validated URL host").to_string();
+    let port = url.port_or_known_default().expect("validated URL port");
+    let addresses = (host.as_str(), port)
+        .to_socket_addrs()
+        .map_err(|_| "The website host could not be resolved.".to_string())?
+        .collect::<Vec<_>>();
+    if addresses.is_empty() {
+        return Err("The website host did not resolve to an address.".into());
+    }
+    if addresses.iter().any(|address| !is_public_ip(address.ip())) {
+        return Err("Favicon import blocks local, private, and reserved network addresses.".into());
+    }
+    Ok((host, addresses[0]))
+}
+
+fn is_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => is_public_ipv4(ip),
+        IpAddr::V6(ip) => is_public_ipv6(ip),
+    }
+}
+
+fn is_public_ipv4(ip: Ipv4Addr) -> bool {
+    let [a, b, c, _] = ip.octets();
+    !(ip.is_private()
+        || ip.is_loopback()
+        || ip.is_link_local()
+        || ip.is_multicast()
+        || ip.is_unspecified()
+        || a == 0
+        || a >= 224
+        || (a == 100 && (64..=127).contains(&b))
+        || (a == 192 && b == 0 && matches!(c, 0 | 2))
+        || (a == 198 && matches!(b, 18 | 19))
+        || (a == 198 && b == 51 && c == 100)
+        || (a == 203 && b == 0 && c == 113))
+}
+
+fn is_public_ipv6(ip: Ipv6Addr) -> bool {
+    if let Some(mapped) = ip.to_ipv4_mapped() {
+        return is_public_ipv4(mapped);
+    }
+    let segments = ip.segments();
+    !(ip.is_loopback()
+        || ip.is_unspecified()
+        || ip.is_multicast()
+        || (segments[0] & 0xfe00) == 0xfc00
+        || (segments[0] & 0xffc0) == 0xfe80
+        || (segments[0] == 0x2001 && segments[1] == 0x0db8))
+}
+
+fn restore_window_bounds(window: &tauri::WebviewWindow, guard: &WindowBoundsGuard) {
+    let Ok(bytes) = fs::read(&guard.path) else {
+        return;
+    };
+    let Ok(saved) = serde_json::from_slice::<PersistedWindowBounds>(&bytes) else {
+        return;
+    };
+    if saved.width == 0 || saved.height == 0 || saved.width > 32_768 || saved.height > 32_768 {
+        return;
+    }
+    let Ok(monitors) = window.available_monitors() else {
+        return;
+    };
+    if monitors.is_empty() {
+        return;
+    }
+
+    let saved_right = i64::from(saved.x) + i64::from(saved.width);
+    let saved_bottom = i64::from(saved.y) + i64::from(saved.height);
+    let preferred = monitors.iter().find(|monitor| {
+        let position = monitor.position();
+        let size = monitor.size();
+        let right = i64::from(position.x) + i64::from(size.width);
+        let bottom = i64::from(position.y) + i64::from(size.height);
+        i64::from(saved.x) < right
+            && saved_right > i64::from(position.x)
+            && i64::from(saved.y) < bottom
+            && saved_bottom > i64::from(position.y)
+    });
+    let primary = window.primary_monitor().ok().flatten();
+    let monitor = preferred.or(primary.as_ref()).unwrap_or(&monitors[0]);
+    let monitor_position = monitor.position();
+    let monitor_size = monitor.size();
+    let width = saved
+        .width
+        .max(WINDOW_MIN_WIDTH.min(monitor_size.width))
+        .min(monitor_size.width);
+    let height = saved
+        .height
+        .max(WINDOW_MIN_HEIGHT.min(monitor_size.height))
+        .min(monitor_size.height);
+    let max_x = i64::from(monitor_position.x) + i64::from(monitor_size.width - width);
+    let max_y = i64::from(monitor_position.y) + i64::from(monitor_size.height - height);
+    let centered_x = i64::from(monitor_position.x) + i64::from(monitor_size.width - width) / 2;
+    let centered_y = i64::from(monitor_position.y) + i64::from(monitor_size.height - height) / 2;
+    let saved_intersects_preferred = preferred.is_some();
+    let x = if saved_intersects_preferred {
+        i64::from(saved.x).clamp(i64::from(monitor_position.x), max_x)
+    } else {
+        centered_x
+    } as i32;
+    let y = if saved_intersects_preferred {
+        i64::from(saved.y).clamp(i64::from(monitor_position.y), max_y)
+    } else {
+        centered_y
+    } as i32;
+
+    let _ = window.set_size(PhysicalSize::new(width, height));
+    let _ = window.set_position(PhysicalPosition::new(x, y));
+    if saved.maximized {
+        let _ = window.maximize();
+    }
+}
+
+fn capture_window_bounds(window: &tauri::Window, guard: &WindowBoundsGuard) {
+    let maximized = window.is_maximized().unwrap_or(false);
+    let minimized = window.is_minimized().unwrap_or(false);
+    let Ok(mut current) = guard.current.lock() else {
+        return;
+    };
+    if maximized || minimized {
+        if let Some(bounds) = current.as_mut() {
+            bounds.maximized = maximized;
+        }
+        return;
+    }
+    let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size()) else {
+        return;
+    };
+    *current = Some(PersistedWindowBounds {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+        maximized: false,
+    });
+}
+
+fn persist_window_bounds(guard: &WindowBoundsGuard) {
+    let bounds = guard.current.lock().ok().and_then(|current| *current);
+    let Some(bounds) = bounds else {
+        return;
+    };
+    let Ok(bytes) = serde_json::to_vec_pretty(&bounds) else {
+        return;
+    };
+    if let Some(parent) = guard.path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = qiring_storage::save_bytes_atomic(&guard.path, &bytes);
 }
 
 fn selected_backup_path(state: &AppState, token: &str) -> Result<PathBuf, String> {
@@ -657,7 +1004,10 @@ mod tests {
 
     #[test]
     fn backup_paths_require_an_unforgeable_dialog_selection_token() {
-        let state = AppState::new(PathBuf::from("/tmp/qiring-test-vault"));
+        let state = AppState::new(
+            PathBuf::from("/tmp/qiring-test-vault"),
+            PathBuf::from("/tmp/qiring-test-window-state"),
+        );
         assert!(selected_backup_path(&state, "unknown").is_err());
         state
             .selected_backups
@@ -687,5 +1037,25 @@ mod tests {
             .map(|scope| scope["url"].as_str().expect("URL scope"))
             .collect::<HashSet<_>>();
         assert_eq!(urls, HashSet::from(["http://*", "https://*"]));
+    }
+
+    #[test]
+    fn favicon_import_rejects_local_networks_and_non_images() {
+        for address in [
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+            IpAddr::V4(Ipv4Addr::new(169, 254, 1, 1)),
+            IpAddr::V6(Ipv6Addr::LOCALHOST),
+        ] {
+            assert!(!is_public_ip(address));
+        }
+        assert!(is_public_ip(IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34))));
+        assert!(image_data_url(b"not an image").is_err());
+    }
+
+    #[test]
+    fn favicon_import_accepts_supported_magic_bytes() {
+        let data_url = image_data_url(b"\x89PNG\r\n\x1a\nmock").expect("PNG");
+        assert!(data_url.starts_with("data:image/png;base64,"));
     }
 }

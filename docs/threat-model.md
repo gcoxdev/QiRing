@@ -4,7 +4,7 @@
 
 **Reviewed:** 2026-08-08
 
-**Scope:** Local desktop vault, webview, Tauri command boundary, file storage, clipboard, recovery, TOTP, and encrypted backups.
+**Scope:** Local desktop vault, webview, Tauri command boundary, file storage, clipboard, recovery, TOTP, encrypted backups, and explicit favicon import.
 
 QiRing is an offline-first password manager. Browser integration, synchronization, and breach checking are intentionally out of scope until each receives a separate security design.
 
@@ -30,6 +30,7 @@ The system must preserve these invariants:
 | Vault/backup files | JSON, schema, metadata, salts, KDF parameters, nonces, ciphertext | 64 MiB vault/128 MiB backup bounds, schema dispatch, KDF bounds, nonce validation, AEAD authentication |
 | Filesystem paths | Existing vault path, backup destinations, restore sources | Durable per-user app-data path, symlink rejection, system file dialogs, unforgeable selection tokens, approved backup directories |
 | URL opener | Credential URL fields | Frontend URL parsing plus Tauri capability restricted to HTTP and HTTPS |
+| Favicon importer | User-supplied website URL, DNS, redirects, response bytes | Explicit command capability, HTTP/HTTPS ports 80/443 only, no proxy, public-address validation and DNS pinning per hop, redirect/time/size/type limits |
 | Clipboard | Secrets copied by the user | Rust-owned generation/value guard, clear-if-unchanged timer, clear on lock |
 
 ## Adversaries
@@ -67,6 +68,8 @@ Fully compromised operating systems, privileged malware, hardware keyloggers, an
 - User-controlled content is inserted with DOM properties and `textContent`; no HTML-string injection API is used.
 - The main window has an explicit capability containing only its application commands and scoped HTTP/HTTPS opening.
 - Backup imports use a short-lived opaque selection token rather than accepting an arbitrary webview path. Automatic-backup directories must be selected through the system dialog.
+- Qi icons accept only magic-byte-validated PNG, JPEG, WebP, GIF, or ICO data up to 512 KiB and are persisted inside the encrypted document. Favicon import is user-initiated, requests `/favicon.ico` directly without a third-party service, rejects credentials/nonstandard ports/private or reserved addresses, pins a validated public endpoint, and revalidates each bounded redirect.
+- Window placement is stored separately from the vault because it is not secret. Restored dimensions and coordinates are bounded and clamped to the current monitor geometry before use.
 
 ### Session lifecycle
 
@@ -80,6 +83,7 @@ Fully compromised operating systems, privileged malware, hardware keyloggers, an
 - JavaScript and platform clipboard APIs use immutable strings that cannot be reliably zeroized. Decrypted values can also exist transiently in webview, allocator, GPU, swap, crash-dump, and accessibility memory.
 - Clipboard managers and OS clipboard history may retain old values after QiRing clears the live clipboard. QiRing never erases newer non-QiRing clipboard content.
 - HTTP URLs are allowed for compatibility and provide no transport confidentiality. Users should prefer HTTPS; adding an explicit HTTP warning remains a defense-in-depth option.
+- Favicon import discloses the user's IP address and requested hostname to the destination site. Plain HTTP also exposes the request and response to the network. The feature is never automatic; local upload is the privacy-preserving alternative.
 - TOTP depends on the host clock and the standard 30-second window. A skewed clock can cause valid credentials to be rejected.
 - Offline KDF protection slows guessing but cannot compensate for a weak master password. The current minimum is 12 characters.
 - Automatic snapshots contain the already-encrypted vault. Manual backups have independent passphrase protection. Anyone who can delete every local copy can still cause denial of service.
@@ -88,7 +92,7 @@ Fully compromised operating systems, privileged malware, hardware keyloggers, an
 
 ## Security verification
 
-- Unit tests cover AEAD/AAD tampering, KDF bounds, schema migration, recovery rotation, overwrite refusal, atomic permissions/symlink behavior, backup restore/safety snapshots, password constraints, and idle/suspend expiry.
+- Unit tests cover AEAD/AAD tampering, KDF bounds, schema migration, recovery rotation, overwrite refusal, atomic permissions/symlink behavior, backup restore/safety snapshots, password constraints, idle/suspend expiry, encrypted icon persistence, image sniffing, and private-address rejection.
 - Fuzz harnesses cover vault, backup, profile, and item/secure-note parsing without running Argon2.
 - UI contract tests enforce CSP, global bridge, opener scope, and DOM-injection rules. Playwright and axe cover the authenticated UI and 800×600 minimum layout.
 - CI blocks on format, Clippy warnings, Rust tests, frontend build/tests, `npm audit`, and pinned `cargo-audit 0.22.2`.

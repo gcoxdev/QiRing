@@ -317,6 +317,7 @@ impl VaultService {
             notes: input.notes,
             tags: input.tags,
             folder: input.folder,
+            icon_data_url: input.icon_data_url,
             security_questions: input.security_questions,
             totp_secret: input.totp_secret,
             password_history: Vec::new(),
@@ -372,6 +373,9 @@ impl VaultService {
         }
         if let Some(folder) = patch.folder {
             item.folder = folder;
+        }
+        if let Some(icon_data_url) = patch.icon_data_url {
+            item.icon_data_url = icon_data_url;
         }
         if let Some(questions) = patch.security_questions {
             item.security_questions = questions;
@@ -470,6 +474,7 @@ impl VaultService {
                 username: item.username.clone(),
                 tags: item.tags.clone(),
                 folder: item.folder.clone(),
+                icon_data_url: item.icon_data_url.clone(),
                 has_totp: item.totp_secret.is_some(),
                 updated_at: item.updated_at,
             })
@@ -1140,6 +1145,9 @@ fn zeroize_item(item: &mut VaultItem) {
     if let Some(value) = &mut item.folder {
         value.zeroize();
     }
+    if let Some(value) = &mut item.icon_data_url {
+        value.zeroize();
+    }
     if let Some(value) = &mut item.totp_secret {
         value.zeroize();
     }
@@ -1174,6 +1182,7 @@ mod tests {
             notes: None,
             tags: vec!["test".to_string()],
             folder: Some("work".to_string()),
+            icon_data_url: None,
             security_questions: Vec::new(),
             totp_secret: None,
         }
@@ -1189,6 +1198,28 @@ mod tests {
         let item_id = service.add_item(login("GitHub", "secret")).expect("add");
         assert_eq!(service.list_items(ListFilter::default()).expect("list").len(), 1);
         assert_eq!(service.get_item(item_id).expect("get").title, "GitHub");
+    }
+
+    #[test]
+    fn item_icons_round_trip_inside_the_vault_document() {
+        let (_dir, mut service) = test_service();
+        service
+            .create_vault(MASTER, AppSettings::default())
+            .expect("create");
+        service.unlock_vault_master(MASTER).expect("unlock");
+        let mut input = login("With icon", "secret");
+        input.icon_data_url = Some("data:image/png;base64,iVBORw0KGgo=".into());
+        let item_id = service.add_item(input).expect("add");
+        assert!(service
+            .list_items(ListFilter::default())
+            .expect("list")
+            .first()
+            .and_then(|item| item.icon_data_url.as_deref())
+            .is_some_and(|value| value.starts_with("data:image/png;base64,")));
+        assert_eq!(
+            service.get_item(item_id).expect("get").icon_data_url.as_deref(),
+            Some("data:image/png;base64,iVBORw0KGgo=")
+        );
     }
 
     #[test]
@@ -1465,5 +1496,32 @@ mod tests {
             .expect("restore");
         service.unlock_vault_master(MASTER).expect("unlock restored");
         assert_eq!(service.get_settings().expect("settings").auto_lock_minutes, 5);
+    }
+
+    #[test]
+    fn ring_sort_preferences_persist_and_reject_duplicate_order_entries() {
+        let (_directory, mut service) = test_service();
+        service
+            .create_vault(MASTER, AppSettings::default())
+            .expect("create");
+        service.unlock_vault_master(MASTER).expect("unlock");
+
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+        let mut settings = service.get_settings().expect("settings");
+        settings.ring_sort_mode = "custom".to_string();
+        settings.ring_category_order = vec!["Work".to_string(), "Personal".to_string()];
+        settings.ring_item_order = vec![second, first];
+        service.update_settings(settings).expect("update Ring order");
+        service.lock_vault();
+        service.unlock_vault_master(MASTER).expect("unlock again");
+
+        let persisted = service.get_settings().expect("persisted settings");
+        assert_eq!(persisted.ring_category_order, ["Work", "Personal"]);
+        assert_eq!(persisted.ring_item_order, [second, first]);
+
+        let mut invalid = persisted;
+        invalid.ring_item_order = vec![first, first];
+        assert!(service.update_settings(invalid).is_err());
     }
 }

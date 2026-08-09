@@ -28,6 +28,8 @@
     "allow-update-settings",
     "allow-health-report",
     "allow-choose-backup-directory",
+    "allow-select-item-icon-dialog",
+    "allow-fetch-favicon",
     "allow-export-backup-dialog",
     "allow-select-backup-file",
     "allow-preview-selected-backup",

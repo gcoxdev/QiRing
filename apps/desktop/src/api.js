@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl as openExternalUrl } from "@tauri-apps/plugin-opener";
 
-export const COMMAND_VERSION = "2";
+export const COMMAND_VERSION = "4";
 
 export const vaultApi = Object.freeze({
   exists: () => invoke("vault_exists"),
@@ -22,6 +22,8 @@ export const vaultApi = Object.freeze({
   getItem: (itemId) => invoke("get_item", { itemId }),
   addItem: (input) => invoke("add_item", { input }),
   updateItem: (itemId, patch) => invoke("update_item", { itemId, patch }),
+  selectItemIcon: () => invoke("select_item_icon_dialog"),
+  fetchFavicon: (url) => invoke("fetch_favicon", { url }),
   deleteItem: (itemId) => invoke("delete_item", { itemId }),
   undoDelete: () => invoke("undo_delete"),
   totp: (itemId) => invoke("get_totp_code", { itemId }),

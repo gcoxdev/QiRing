@@ -26,8 +26,18 @@ test("frontend does not inject user-controlled HTML", async () => {
   assert.doesNotMatch(backend, /Command::new|fn open_url/);
 });
 
-test("native form controls declare the dark color scheme", async () => {
+test("native form controls follow the active color scheme", async () => {
   const css = await read("../src/styles.css");
-  assert.match(css, /select option[\s\S]*background-color:\s*#151b18/);
-  assert.match(css, /select option[\s\S]*color:\s*#eef6f1/);
+  assert.match(css, /select option[\s\S]*color-scheme:\s*inherit/);
+  assert.match(css, /select option[\s\S]*background-color:\s*var\(--surface-2\)/);
+  assert.match(css, /select option[\s\S]*color:\s*var\(--text\)/);
+});
+
+test("favicon import is capability scoped and blocks private networks", async () => {
+  const backend = await read("../src-tauri/src/lib.rs");
+  const capability = JSON.parse(await read("../src-tauri/capabilities/main.json"));
+  assert.equal(capability.permissions.includes("allow-fetch-favicon"), true);
+  assert.match(backend, /no_proxy\(\)/);
+  assert.match(backend, /addresses\.iter\(\)\.any\(\|address\| !is_public_ip/);
+  assert.match(backend, /MAX_QI_ICON_BYTES/);
 });
