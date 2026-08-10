@@ -14,6 +14,7 @@ test("production webview boundary is explicit and least privilege", async () => 
 
   const capability = JSON.parse(await read("../src-tauri/capabilities/main.json"));
   assert.equal(capability.permissions.includes("core:default"), false);
+  assert.equal(capability.permissions.includes("allow-prepare-recovery-print"), true);
   const opener = capability.permissions.find((permission) => typeof permission === "object" && permission.identifier === "opener:allow-open-url");
   assert.deepEqual(opener.allow.map((entry) => entry.url).sort(), ["http://*", "https://*"]);
 });
@@ -60,4 +61,22 @@ test("window state is durable and Linux backend selection is explicit", async ()
   assert.match(launcher, /--x11/);
   assert.match(launcher, /--wayland/);
   assert.match(launcher, /WINIT_UNIX_BACKEND/);
+});
+
+test("Linux recovery printing does not force a GTK file format", async () => {
+  const backend = await read("../src-tauri/src/lib.rs");
+  assert.match(backend, /settings\.set\("output-basename"/);
+  assert.doesNotMatch(backend, /settings\.set\("output-file-format"/);
+});
+
+test("keyboard shortcut labels use the active operating-system convention", async () => {
+  const { formatShortcut, shortcutAriaLabel, shortcutModifier } = await import("../src/shortcuts.js");
+
+  assert.equal(shortcutModifier("Linux x86_64"), "Ctrl");
+  assert.equal(formatShortcut("K", "Linux x86_64"), "Ctrl+K");
+  assert.equal(formatShortcut("Shift+U", "Win32"), "Ctrl+Shift+U");
+  assert.equal(shortcutModifier("MacIntel"), "⌘");
+  assert.equal(formatShortcut("K", "MacIntel"), "⌘K");
+  assert.equal(formatShortcut("Shift+U", "MacIntel"), "⌘⇧U");
+  assert.equal(shortcutAriaLabel("Shift+U", "MacIntel"), "Command plus Shift plus U");
 });

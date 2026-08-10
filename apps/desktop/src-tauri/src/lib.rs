@@ -28,6 +28,7 @@ struct AppState {
     selected_backups: Arc<Mutex<HashMap<String, PathBuf>>>,
     approved_backup_directories: Arc<Mutex<HashSet<PathBuf>>>,
     window_bounds: Arc<WindowBoundsGuard>,
+    pending_print_basename: Arc<Mutex<Option<String>>>,
 }
 
 impl AppState {
@@ -42,6 +43,7 @@ impl AppState {
                 current: Mutex::new(WindowBoundsState::default()),
                 persistence: Mutex::new(()),
             }),
+            pending_print_basename: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -97,6 +99,7 @@ const WINDOW_MIN_WIDTH: u32 = 800;
 const WINDOW_MIN_HEIGHT: u32 = 600;
 const WINDOW_BOUNDS_PERSIST_DELAY: Duration = Duration::from_millis(500);
 const WINDOW_BOUNDS_PERSIST_POLL: Duration = Duration::from_millis(200);
+const RECOVERY_PRINT_TITLE_PREFIX: &str = "QiRing-Recovery-Key-";
 
 #[tauri::command]
 async fn create_vault(
@@ -163,15 +166,22 @@ async fn regenerate_recovery_key(
 }
 
 #[tauri::command]
-async fn save_recovery_key_dialog(app: AppHandle, recovery_key: String) -> Result<Option<String>, String> {
+async fn save_recovery_key_dialog(
+    app: AppHandle,
+    recovery_key: String,
+    basename: String,
+) -> Result<Option<String>, String> {
     let recovery_key = Zeroizing::new(recovery_key);
+    let basename = recovery_print_basename(&basename)
+        .ok_or_else(|| "The recovery-key export filename is invalid.".to_string())?;
+    let filename = format!("{basename}.txt");
     let picker = app.clone();
     let selection = tauri::async_runtime::spawn_blocking(move || {
         picker
             .dialog()
             .file()
             .set_title("Save QiRing recovery key")
-            .set_file_name("qiring-recovery-key.txt")
+            .set_file_name(&filename)
             .add_filter("Plain text", &["txt"])
             .blocking_save_file()
     })
@@ -184,11 +194,22 @@ async fn save_recovery_key_dialog(app: AppHandle, recovery_key: String) -> Resul
         .into_path()
         .map_err(|error| format!("selected file is not a local path: {error}"))?;
     let contents = Zeroizing::new(format!(
-        "QiRing recovery key\n\n{}\n\nStore this file offline. Anyone with this key and the vault file can reset the vault master password.\n",
+        "QiRing recovery key\n\n{}\n\nStore this file offline. Anyone with this key and the Ring file can reset the Ring master password.\n",
         recovery_key.as_str()
     ));
     qiring_storage::save_bytes_atomic_user_directory(&path, contents.as_bytes()).map_err(display_error)?;
     Ok(Some(path.display().to_string()))
+}
+
+#[tauri::command]
+fn prepare_recovery_print(state: State<'_, AppState>, basename: String) -> Result<(), String> {
+    let basename = recovery_print_basename(&basename)
+        .ok_or_else(|| "The recovery print filename is invalid.".to_string())?;
+    *state
+        .pending_print_basename
+        .lock()
+        .map_err(|_| "recovery print state lock poisoned".to_string())? = Some(basename.to_owned());
+    Ok(())
 }
 
 #[tauri::command]
@@ -379,7 +400,7 @@ async fn export_backup_dialog(
             .dialog()
             .file()
             .set_title("Export encrypted QiRing backup")
-            .set_file_name("qiring-vault.qiring-backup")
+            .set_file_name("qiring-ring.qiring-backup")
             .add_filter("QiRing encrypted backup", &["qiring-backup"])
             .blocking_save_file()
     })
@@ -541,6 +562,12 @@ pub fn run() {
             app.manage(state);
 
             if let Some(window) = app.get_webview_window("main") {
+                #[cfg(target_os = "linux")]
+                configure_linux_print_defaults(
+                    &window,
+                    Arc::clone(&app.state::<AppState>().pending_print_basename),
+                )?;
+
                 let bounds = app.state::<AppState>().window_bounds.clone();
                 if !restore_window_bounds(&window, &bounds) {
                     capture_window_bounds(&window.as_ref().window(), &bounds);
@@ -576,6 +603,7 @@ pub fn run() {
             unlock_vault_recovery,
             regenerate_recovery_key,
             save_recovery_key_dialog,
+            prepare_recovery_print,
             lock_vault,
             touch_activity,
             add_item,
@@ -608,6 +636,47 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("failed to run QiRing desktop app");
+}
+
+fn recovery_print_basename(title: &str) -> Option<&str> {
+    (title.starts_with(RECOVERY_PRINT_TITLE_PREFIX)
+        && title.len() <= 64
+        && title
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-'))
+    .then_some(title)
+}
+
+#[cfg(target_os = "linux")]
+fn configure_linux_print_defaults(
+    window: &tauri::WebviewWindow,
+    pending_basename: Arc<Mutex<Option<String>>>,
+) -> tauri::Result<()> {
+    window.with_webview(|platform_webview| {
+        use webkit2gtk::{PrintOperationExt, WebViewExt};
+
+        platform_webview.inner().connect_print(move |webview, operation| {
+            let basename = pending_basename
+                .lock()
+                .ok()
+                .and_then(|mut pending| pending.take())
+                .or_else(|| {
+                    webview
+                        .title()
+                        .and_then(|title| recovery_print_basename(title.as_str()).map(str::to_owned))
+                });
+            let Some(basename) = basename else {
+                return false;
+            };
+            let settings = operation.print_settings().unwrap_or_else(gtk::PrintSettings::new);
+            settings.set("output-basename", Some(&basename));
+            // Leave the file format to GTK's Print to File controls. GTK 3's file
+            // backend compares this private setting against lowercase values and
+            // aborts the process when an unrecognized value is supplied.
+            operation.set_print_settings(&settings);
+            false
+        });
+    })
 }
 
 fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
@@ -1025,7 +1094,7 @@ where
         operation(&mut service)
     })
     .await
-    .map_err(|error| format!("vault operation task failed: {error}"))?
+    .map_err(|error| format!("Ring operation task failed: {error}"))?
 }
 
 fn clear_owned_clipboard(app: &AppHandle, state: &AppState) {
@@ -1244,5 +1313,21 @@ mod tests {
     fn favicon_import_accepts_supported_magic_bytes() {
         let data_url = image_data_url(b"\x89PNG\r\n\x1a\nmock").expect("PNG");
         assert!(data_url.starts_with("data:image/png;base64,"));
+    }
+
+    #[test]
+    fn print_basename_accepts_only_bounded_recovery_titles() {
+        assert_eq!(
+            recovery_print_basename("QiRing-Recovery-Key-2026-08-09"),
+            Some("QiRing-Recovery-Key-2026-08-09")
+        );
+        assert_eq!(recovery_print_basename("Vault — QiRing"), None);
+        assert_eq!(recovery_print_basename("QiRing-Recovery-Key-../../vault"), None);
+        assert_eq!(
+            recovery_print_basename(
+                "QiRing-Recovery-Key-2026-08-09-extra-extra-extra-extra-extra-extra-extra-extra"
+            ),
+            None
+        );
     }
 }

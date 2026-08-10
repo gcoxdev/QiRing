@@ -596,6 +596,10 @@ kbd {
   background: var(--surface);
 }
 
+#qiringView .master-pane {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .pane-heading,
 .detail-heading,
 .section-heading,
@@ -654,6 +658,35 @@ kbd {
 
 .pane-tools {
   gap: 7px;
+}
+
+.ring-controls {
+  display: grid;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  padding: 6px;
+}
+
+.ring-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.ring-search-row input {
+  height: var(--control-height);
+  min-height: var(--control-height);
+}
+
+.ring-pane-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 4px;
+  width: 100%;
+}
+
+.ring-pane-tools .sort-action {
+  width: 100%;
 }
 
 .category-actions {
@@ -735,6 +768,10 @@ kbd {
   gap: 8px;
 }
 
+.ring-controls .tag-filter {
+  grid-column: auto;
+}
+
 .tag-filter label {
   color: var(--muted);
   font-family: "IBM Plex Mono", monospace;
@@ -773,8 +810,9 @@ kbd {
   user-select: none;
 }
 
-.category-group.sortable > .category-summary {
-  grid-template-columns: 18px 12px minmax(0, 1fr) auto;
+.category-group.sortable > .category-disclosure > .category-summary {
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  padding-left: 30px;
 }
 
 .category-summary::-webkit-details-marker {
@@ -821,7 +859,7 @@ kbd {
   transform: rotate(-45deg);
 }
 
-.category-group[open] > .category-summary .category-chevron {
+.category-disclosure[open] > .category-summary .category-chevron {
   transform: rotate(90deg);
 }
 
@@ -908,6 +946,13 @@ kbd {
 
 .category-group {
   position: relative;
+}
+
+.category-group.sortable > .drag-handle {
+  position: absolute;
+  z-index: 1;
+  top: 2px;
+  left: 6px;
 }
 
 .master-list-item {
@@ -1118,6 +1163,63 @@ kbd {
   margin-top: 12px;
 }
 
+.password-strength {
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.password-strength-meter {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--line);
+}
+
+.password-strength-meter span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--muted);
+  transition: width 160ms ease, background-color 160ms ease;
+}
+
+.password-strength[data-score="1"] .password-strength-meter span {
+  width: 25%;
+  background: var(--danger);
+}
+
+.password-strength[data-score="2"] .password-strength-meter span {
+  width: 50%;
+  background: var(--warning);
+}
+
+.password-strength[data-score="3"] .password-strength-meter span {
+  width: 75%;
+  background: var(--accent-strong);
+}
+
+.password-strength[data-score="4"] .password-strength-meter span {
+  width: 100%;
+  background: var(--accent);
+}
+
+.password-strength small {
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.password-strength small strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .totp-stack {
   display: grid;
   gap: 8px;
@@ -1166,9 +1268,36 @@ kbd {
 }
 
 .question-list,
+.custom-field-list,
 .history-list {
   display: grid;
   gap: 6px;
+}
+
+.compact-help {
+  margin: -3px 0 9px;
+  font-size: 12px;
+}
+
+.custom-field-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.75fr) minmax(170px, 1.25fr) max-content max-content max-content;
+  align-items: end;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 8px;
+}
+
+.custom-field-secret {
+  min-height: var(--control-height);
+  align-items: center;
+  padding-inline: 4px;
+  white-space: nowrap;
+}
+
+.custom-field-row > button {
+  white-space: nowrap;
 }
 
 .question-row {
@@ -1200,6 +1329,30 @@ kbd {
 
 .recovery-output-actions {
   margin-bottom: 12px;
+}
+
+.recovery-qr-panel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 14px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  padding: 10px;
+}
+
+.recovery-qr-panel canvas {
+  display: block;
+  width: 180px;
+  height: 180px;
+  background: #fff;
+  image-rendering: pixelated;
+}
+
+.recovery-qr-panel p {
+  margin: 0;
+  font-size: 13px;
 }
 
 .history-row small {
@@ -1586,6 +1739,8 @@ kbd {
 .unsaved-dialog,
 .confirmation-dialog {
   width: min(650px, calc(100% - 40px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
   border: 1px solid var(--accent-strong);
   border-radius: 2px;
   background: var(--surface);
@@ -1603,6 +1758,28 @@ kbd {
 
 .recovery-dialog form {
   padding: 24px;
+}
+
+.recovery-print-sheet {
+  display: none;
+}
+
+.recovery-key-status {
+  margin: 12px 0 0;
+}
+
+.recovery-key-status[data-state="saved"] {
+  color: var(--accent);
+}
+
+.recovery-action-status {
+  min-height: 1.5em;
+  margin: -4px 0 10px;
+  color: var(--accent);
+}
+
+.recovery-verification-field {
+  margin: 14px 0 12px;
 }
 
 .unsaved-dialog,
@@ -1760,7 +1937,7 @@ kbd {
 
   #qiringView .pane-tools {
     flex: 0 0 auto;
-    width: auto;
+    width: 100%;
   }
 
   #qiringView .pane-tools button {
@@ -1822,6 +1999,18 @@ kbd {
     grid-column: 3;
   }
 
+  .custom-field-row {
+    grid-template-columns: minmax(0, 1fr) max-content max-content max-content;
+  }
+
+  .custom-field-label-wrap {
+    grid-column: 1 / -1;
+  }
+
+  .custom-field-value-wrap {
+    grid-column: 1;
+  }
+
   .settings-grid {
     grid-template-columns: 1fr;
   }
@@ -1875,6 +2064,14 @@ kbd {
   .generator-strip {
     grid-template-columns: minmax(0, 1fr) max-content;
   }
+
+  .recovery-qr-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recovery-qr-panel canvas {
+    justify-self: center;
+  }
 }
 
 @media (max-height: 680px) {
@@ -1910,26 +2107,133 @@ kbd {
 }
 
 @media print {
-  body > *:not(#app),
-  #app,
-  .recovery-dialog::backdrop,
-  .recovery-dialog button,
-  .recovery-dialog input,
-  .recovery-dialog .check-row {
+  @page {
+    margin: 16mm;
+    size: auto;
+  }
+
+  html,
+  body {
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  body > * {
     display: none !important;
   }
 
-  .recovery-dialog[open] {
+  body > .recovery-dialog[open] {
     position: static;
     display: block !important;
-    width: 100%;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    overflow: visible;
     border: 0;
+    border-radius: 0;
     color: #000;
     background: #fff;
+    padding: 0;
     box-shadow: none;
   }
 
-  .recovery-dialog[open] code {
+  .recovery-dialog::backdrop,
+  .recovery-dialog[open] > form {
+    display: none !important;
+  }
+
+  .recovery-print-sheet {
+    display: grid !important;
+    gap: 9mm;
+    width: 100%;
+    color: #111;
+    background: #fff;
+    font-size: 11pt;
+  }
+
+  .recovery-print-header {
+    display: flex;
+    align-items: center;
+    gap: 5mm;
+    border-bottom: 1.5pt solid #111;
+    padding-bottom: 5mm;
+  }
+
+  .recovery-print-header img {
+    width: 17mm;
+    height: 17mm;
+  }
+
+  .recovery-print-header span,
+  .recovery-print-details > span {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 8.5pt;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .recovery-print-header h1 {
+    margin: 1mm 0 0;
+    font-size: 27pt;
+    letter-spacing: -0.035em;
+    line-height: 1;
+  }
+
+  .recovery-print-intro,
+  .recovery-print-details p {
+    margin: 0;
+    color: #222 !important;
+    line-height: 1.5;
+  }
+
+  .recovery-print-content {
+    display: grid;
+    grid-template-columns: 40mm minmax(0, 1fr);
+    align-items: center;
+    gap: 8mm;
+  }
+
+  .recovery-print-content > img {
+    display: block;
+    width: 40mm;
+    height: 40mm;
+    background: #fff;
+    image-rendering: pixelated;
+  }
+
+  .recovery-print-details {
+    min-width: 0;
+  }
+
+  .recovery-print-details code {
+    display: block;
+    margin: 3mm 0 5mm;
+    border-block: 1pt solid #111;
+    padding: 5mm 0;
     color: #000;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13pt;
+    font-weight: 600;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+
+  .recovery-print-sheet aside {
+    border: 1.25pt solid #111;
+    padding: 4mm;
+    line-height: 1.45;
+  }
+
+  .recovery-print-sheet footer {
+    border-top: 0.75pt solid #777;
+    padding-top: 3mm;
+    color: #444;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 8.5pt;
   }
 }

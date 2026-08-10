@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+pub(crate) const DEFAULT_PROFILES_VERSION: u32 = 1;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VaultItemType {
@@ -15,6 +17,14 @@ pub enum VaultItemType {
 pub struct SecurityQuestion {
     pub question: String,
     pub answer: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomField {
+    pub label: String,
+    pub value: String,
+    #[serde(default)]
+    pub concealed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +48,8 @@ pub struct VaultItem {
     pub icon_data_url: Option<String>,
     #[serde(default)]
     pub security_questions: Vec<SecurityQuestion>,
+    #[serde(default)]
+    pub custom_fields: Vec<CustomField>,
     #[serde(default)]
     pub totp_secret: Option<String>,
     #[serde(default)]
@@ -160,6 +172,51 @@ impl Default for PasswordProfile {
     }
 }
 
+pub(crate) fn default_password_profiles() -> Vec<PasswordProfile> {
+    vec![
+        PasswordProfile::default(),
+        PasswordProfile {
+            id: Uuid::new_v4(),
+            name: "Strong 32".to_string(),
+            policy: PasswordPolicy {
+                length: 32,
+                upper: CharacterRange::new(2, 32),
+                lower: CharacterRange::new(2, 32),
+                numbers: CharacterRange::new(2, 32),
+                symbols: CharacterRange::new(2, 32),
+                avoid_ambiguous: true,
+                ..PasswordPolicy::default()
+            },
+        },
+        PasswordProfile {
+            id: Uuid::new_v4(),
+            name: "Website Compatible 16".to_string(),
+            policy: PasswordPolicy {
+                length: 16,
+                upper: CharacterRange::new(1, 16),
+                lower: CharacterRange::new(1, 16),
+                numbers: CharacterRange::new(1, 16),
+                symbols: CharacterRange::new(1, 4),
+                allowed_symbols: "!@#$%*-_".to_string(),
+                avoid_ambiguous: true,
+            },
+        },
+        PasswordProfile {
+            id: Uuid::new_v4(),
+            name: "Alphanumeric 20".to_string(),
+            policy: PasswordPolicy {
+                length: 20,
+                upper: CharacterRange::new(1, 20),
+                lower: CharacterRange::new(1, 20),
+                numbers: CharacterRange::new(1, 20),
+                symbols: CharacterRange::new(0, 0),
+                avoid_ambiguous: true,
+                ..PasswordPolicy::default()
+            },
+        },
+    ]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct DeletedItem {
     pub item: VaultItem,
@@ -171,18 +228,22 @@ pub(crate) struct DeletedItem {
 pub(crate) struct VaultDocument {
     pub items: HashMap<Uuid, VaultItem>,
     pub profiles: HashMap<Uuid, PasswordProfile>,
+    #[serde(default)]
+    pub default_profiles_version: u32,
     pub settings: AppSettings,
     pub deleted_items: Vec<DeletedItem>,
 }
 
 impl Default for VaultDocument {
     fn default() -> Self {
-        let profile = PasswordProfile::default();
-        let mut profiles = HashMap::new();
-        profiles.insert(profile.id, profile);
+        let profiles = default_password_profiles()
+            .into_iter()
+            .map(|profile| (profile.id, profile))
+            .collect();
         Self {
             items: HashMap::new(),
             profiles,
+            default_profiles_version: DEFAULT_PROFILES_VERSION,
             settings: AppSettings::default(),
             deleted_items: Vec::new(),
         }
@@ -258,6 +319,8 @@ pub struct ItemInput {
     #[serde(default)]
     pub security_questions: Vec<SecurityQuestion>,
     #[serde(default)]
+    pub custom_fields: Vec<CustomField>,
+    #[serde(default)]
     pub totp_secret: Option<String>,
 }
 
@@ -272,6 +335,7 @@ pub struct ItemPatch {
     pub folder: Option<Option<String>>,
     pub icon_data_url: Option<Option<String>>,
     pub security_questions: Option<Vec<SecurityQuestion>>,
+    pub custom_fields: Option<Vec<CustomField>>,
     pub totp_secret: Option<Option<String>>,
 }
 
@@ -378,7 +442,7 @@ pub struct TotpCode {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
-    #[error("vault is locked")]
+    #[error("Ring is locked")]
     VaultLocked,
     #[error("item not found")]
     ItemNotFound,
@@ -388,7 +452,7 @@ pub enum CoreError {
     InvalidInput(String),
     #[error("authentication failed")]
     AuthenticationFailed,
-    #[error("a vault already exists at this location")]
+    #[error("a Ring already exists at this location")]
     VaultAlreadyExists,
     #[error("no deleted item is available to restore")]
     NothingToUndo,

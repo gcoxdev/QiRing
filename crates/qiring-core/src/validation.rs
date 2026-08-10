@@ -1,4 +1,4 @@
-use crate::{AppSettings, CoreError, ItemInput, ItemPatch, PasswordProfile, SecurityQuestion};
+use crate::{AppSettings, CoreError, CustomField, ItemInput, ItemPatch, PasswordProfile, SecurityQuestion};
 use data_encoding::BASE64;
 use std::collections::HashSet;
 
@@ -9,6 +9,7 @@ const MAX_NOTES_CHARS: usize = 100_000;
 const MAX_TAGS: usize = 50;
 const MAX_TAG_CHARS: usize = 64;
 const MAX_QUESTIONS: usize = 20;
+const MAX_CUSTOM_FIELDS: usize = 50;
 const MAX_ICON_DATA_URL_CHARS: usize = 700_000;
 const MAX_RING_CATEGORIES: usize = 10_000;
 const MAX_RING_ITEMS: usize = 100_000;
@@ -44,6 +45,7 @@ pub(crate) fn validate_item_input(input: &ItemInput) -> anyhow::Result<()> {
     validate_icon_data_url(&input.icon_data_url)?;
     validate_tags(&input.tags)?;
     validate_questions(&input.security_questions)?;
+    validate_custom_fields(&input.custom_fields)?;
     validate_optional(&input.totp_secret, 1024, "TOTP secret")
 }
 
@@ -74,6 +76,9 @@ pub(crate) fn validate_item_patch(patch: &ItemPatch) -> anyhow::Result<()> {
     }
     if let Some(questions) = &patch.security_questions {
         validate_questions(questions)?;
+    }
+    if let Some(fields) = &patch.custom_fields {
+        validate_custom_fields(fields)?;
     }
     if let Some(value) = &patch.totp_secret {
         validate_optional(value, 1024, "TOTP secret")?;
@@ -233,6 +238,22 @@ fn validate_questions(questions: &[SecurityQuestion]) -> anyhow::Result<()> {
         })
     {
         return Err(CoreError::InvalidInput("security questions exceed supported limits".into()).into());
+    }
+    Ok(())
+}
+
+fn validate_custom_fields(fields: &[CustomField]) -> anyhow::Result<()> {
+    if fields.len() > MAX_CUSTOM_FIELDS
+        || fields.iter().any(|field| {
+            field.label.trim().is_empty()
+                || field.label.chars().count() > MAX_TITLE_CHARS
+                || field.value.chars().count() > MAX_FIELD_CHARS
+        })
+    {
+        return Err(CoreError::InvalidInput(
+            "custom fields require a label and must stay within supported limits".into(),
+        )
+        .into());
     }
     Ok(())
 }

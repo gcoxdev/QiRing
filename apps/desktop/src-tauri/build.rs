@@ -4,6 +4,7 @@ const COMMANDS: &[&str] = &[
     "unlock_vault_recovery",
     "regenerate_recovery_key",
     "save_recovery_key_dialog",
+    "prepare_recovery_print",
     "lock_vault",
     "touch_activity",
     "add_item",

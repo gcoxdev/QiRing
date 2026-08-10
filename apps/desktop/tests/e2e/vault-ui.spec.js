@@ -12,19 +12,34 @@ async function installTauriMock(page) {
     window.requestAnimationFrame(countFrame);
     const callbacks = new Map();
     let callbackId = 1;
-    const profiles = [{
-      id: "11111111-1111-4111-8111-111111111111",
-      name: "Strong 20",
-      policy: {
-        length: 20,
-        upper: { min: 1, max: 20 },
-        lower: { min: 1, max: 20 },
-        numbers: { min: 1, max: 20 },
-        symbols: { min: 1, max: 20 },
-        allowed_symbols: "!@#$%^&*()-_=+[]{};:,.?/",
-        avoid_ambiguous: false
+    const profiles = [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        name: "Strong 20",
+        policy: {
+          length: 20,
+          upper: { min: 1, max: 20 },
+          lower: { min: 1, max: 20 },
+          numbers: { min: 1, max: 20 },
+          symbols: { min: 1, max: 20 },
+          allowed_symbols: "!@#$%^&*()-_=+[]{};:,.?/",
+          avoid_ambiguous: false
+        }
+      },
+      {
+        id: "33333333-3333-4333-8333-333333333333",
+        name: "Alphanumeric 20",
+        policy: {
+          length: 20,
+          upper: { min: 1, max: 20 },
+          lower: { min: 1, max: 20 },
+          numbers: { min: 1, max: 20 },
+          symbols: { min: 0, max: 0 },
+          allowed_symbols: "!@#$%^&*()-_=+[]{};:,.?/",
+          avoid_ambiguous: true
+        }
       }
-    }];
+    ];
     const items = [
       { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", item_type: "login", title: "Admin", username: "admin@example.com", folder: "Work", tags: ["critical", "work"], icon_data_url: null, has_totp: true, updated_at: new Date().toISOString() },
       { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", item_type: "login", title: "Billing", username: "billing@example.com", folder: "Work", tags: ["finance", "work"], icon_data_url: null, has_totp: false, updated_at: new Date().toISOString() },
@@ -36,6 +51,7 @@ async function installTauriMock(page) {
       url: null,
       notes: null,
       security_questions: [],
+      custom_fields: [],
       totp_secret: null,
       password_history: []
     }]));
@@ -106,6 +122,7 @@ async function installTauriMock(page) {
           }
           case "get_item": return structuredClone(itemRecords.get(args.itemId));
           case "add_item": {
+            window.__lastItemInput = structuredClone(args.input);
             const id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
             const record = {
               id,
@@ -129,6 +146,7 @@ async function installTauriMock(page) {
             return id;
           }
           case "update_item": {
+            window.__lastItemPatch = structuredClone(args.patch);
             const record = itemRecords.get(args.itemId);
             Object.assign(record, structuredClone(args.patch), { updated_at: new Date().toISOString() });
             const summary = items.find((item) => item.id === args.itemId);
@@ -152,6 +170,13 @@ async function installTauriMock(page) {
           case "select_item_icon_dialog": return "data:image/png;base64,iVBORw0KGgo=";
           case "fetch_favicon": return "data:image/png;base64,iVBORw0KGgo=";
           case "get_totp_code": return { code: "123456", valid_for_seconds: 30 };
+          case "regenerate_recovery_key": return {
+            recovery_key: "replacement-recovery-key-123456",
+            recovery_key_fingerprint: "replacement"
+          };
+          case "rotate_master_password":
+            window.__rotatedMasterPassword = structuredClone(args);
+            return null;
           case "get_settings": return structuredClone(settings);
           case "update_settings": Object.assign(settings, structuredClone(args.settings)); return null;
           case "generate_password": return { value: "Aaaa1111!!!!MockPass".slice(0, args.policy.length) };
@@ -170,7 +195,7 @@ async function installTauriMock(page) {
           }
           case "health_report": return window.__healthWithIssue
             ? {
-                analyzed_items: 1,
+                analyzed_items: items.length,
                 weak_count: 1,
                 reused_count: 0,
                 old_count: 0,
@@ -181,7 +206,7 @@ async function installTauriMock(page) {
                   detail: "Password is short or lacks character variety."
                 }]
               }
-            : { analyzed_items: 0, weak_count: 0, reused_count: 0, old_count: 0, issues: [] };
+            : { analyzed_items: items.length, weak_count: 0, reused_count: 0, old_count: 0, issues: [] };
           case "list_snapshots": return [];
           case "touch_activity": return null;
           case "copy_secret": return 30;
@@ -210,7 +235,9 @@ test.beforeEach(async ({ page }) => {
     await new Promise((resolve) => window.setTimeout(resolve, 220));
     return window.__frameCounter - start;
   });
-  expect(paintedFrames).toBeGreaterThan(4);
+  // One frame proves the invoke yielded to the renderer; headless Chromium can
+  // throttle requestAnimationFrame heavily even when the CSS spinner is active.
+  expect(paintedFrames).toBeGreaterThan(1);
   await expect(page.getByRole("heading", { name: "Ring", exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByLabel("Name", { exact: true })).toBeFocused();
   const feedback = await page.evaluate(() => window.__unlockFeedbackAtInvoke);
@@ -220,7 +247,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("context actions and profile master-detail editor follow the active module", async ({ page }) => {
-  await expect(page.locator("#viewTitle")).toHaveText("Vault");
+  await expect(page.locator("#viewTitle")).toHaveText("Ring");
   await expect(page.getByRole("button", { name: "New Qi" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save Qi" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Delete Qi" })).toBeVisible();
@@ -244,7 +271,7 @@ test("context actions and profile master-detail editor follow the active module"
   await page.getByRole("button", { name: "Save Profile" }).click();
 
   await page.getByRole("button", { name: "Open navigation menu" }).click();
-  await page.getByRole("menuitem", { name: /Vault Health/ }).click();
+  await page.getByRole("menuitem", { name: /Ring Health/ }).click();
   await expect(page.getByRole("button", { name: "New Profile" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Save Profile" })).toBeHidden();
 });
@@ -357,6 +384,58 @@ test("credential, TOTP, and security-question controls reflow at minimum width",
   expect(questionPositions.answerBelowQuestion).toBe(true);
   expect(questionPositions.actionsShareRow).toBe(true);
   expect(questionPositions.removeInside).toBe(true);
+
+  await page.getByRole("button", { name: "Add field" }).click();
+  const customFieldBounds = await page.locator(".custom-field-row").evaluate((row) => {
+    const value = row.querySelector(".custom-field-value").getBoundingClientRect();
+    const secret = row.querySelector(".custom-field-secret").getBoundingClientRect();
+    const remove = row.querySelector(".custom-field-remove").getBoundingClientRect();
+    const bounds = row.getBoundingClientRect();
+    return {
+      valueBelowLabel: value.top >= row.querySelector(".custom-field-label").getBoundingClientRect().bottom,
+      actionsShareRow: Math.abs(value.top - secret.top) < 1,
+      removeInside: remove.right <= bounds.right + 1
+    };
+  });
+  expect(customFieldBounds.valueBelowLabel).toBe(true);
+  expect(customFieldBounds.actionsShareRow).toBe(true);
+  expect(customFieldBounds.removeInside).toBe(true);
+});
+
+test("password strength updates live and custom fields round-trip through the Qi editor", async ({ page }) => {
+  await page.getByRole("button", { name: "Expand all categories" }).click();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+
+  const password = page.getByLabel("Password", { exact: true });
+  await password.fill("short");
+  await expect(page.locator("#passwordStrengthLabel")).toHaveText("Weak");
+  await expect(page.locator("#passwordStrengthMeter")).toHaveAttribute("aria-valuenow", "1");
+  await password.fill("Longer-Password-123!secure");
+  await expect(page.locator("#passwordStrengthLabel")).toHaveText("Very strong");
+  await expect(page.locator("#passwordStrengthMeter")).toHaveAttribute("aria-valuetext", "Very strong");
+
+  await page.getByRole("button", { name: "Add field" }).click();
+  const row = page.locator(".custom-field-row");
+  await row.getByLabel("Label").fill("Door PIN");
+  await row.getByLabel("Value", { exact: true }).fill("7391");
+  await row.getByLabel("Keep value secret").check();
+  await expect(row.getByLabel("Value", { exact: true })).toHaveAttribute("type", "password");
+  await page.getByRole("button", { name: "Save Qi" }).click();
+  await expect(page.locator("#dirtyIndicator")).toBeHidden();
+
+  const saved = await page.evaluate(() => window.__lastItemPatch);
+  expect(saved.custom_fields).toEqual([{ label: "Door PIN", value: "7391", concealed: true }]);
+  await expect(page.locator(".custom-field-row")).toHaveCount(1);
+  await expect(page.locator(".custom-field-row").getByLabel("Label")).toHaveValue("Door PIN");
+  await expect(page.locator(".custom-field-row").getByLabel("Value", { exact: true })).toHaveAttribute("type", "password");
+});
+
+test("new Qi entries default to the Strong 20 password profile", async ({ page }) => {
+  await page.locator("#profileSelect").evaluate((select) => {
+    select.value = [...select.options].find((option) => option.textContent.startsWith("Alphanumeric 20"))?.value || "";
+  });
+  await page.getByRole("button", { name: "New Qi" }).click();
+  await expect(page.locator("#profileSelect option:checked")).toContainText("Strong 20");
 });
 
 test("TOTP actions sit beside the code and the generator stays intrinsic at wider widths", async ({ page }) => {
@@ -405,7 +484,8 @@ test("health issue actions keep readable labels at minimum width", async ({ page
   await page.setViewportSize({ width: 800, height: 600 });
   await page.evaluate(() => { window.__healthWithIssue = true; });
   await page.getByRole("button", { name: "Open navigation menu" }).click();
-  await page.getByRole("menuitem", { name: /Vault Health/ }).click();
+  await page.getByRole("menuitem", { name: /Ring Health/ }).click();
+  await expect(page.locator("#healthAnalyzed")).toHaveText("3");
   const widths = await page.locator("#runHealth, #healthIssues .issue-row button").evaluateAll((buttons) => buttons.map((button) => ({
     width: button.getBoundingClientRect().width,
     whiteSpace: getComputedStyle(button).whiteSpace
@@ -430,7 +510,7 @@ test("destructive Qi and profile actions use explicit in-app confirmation", asyn
   await page.getByRole("button", { name: "Admin", exact: true }).click();
   await page.getByRole("button", { name: "Delete Qi" }).click();
   const qiDialog = page.getByRole("dialog", { name: "Delete Qi?" });
-  await expect(qiDialog).toContainText("Delete “Admin” from the vault?");
+  await expect(qiDialog).toContainText("Delete “Admin” from the Ring?");
   await qiDialog.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("button", { name: "Admin", exact: true })).toBeVisible();
 
@@ -460,7 +540,7 @@ test("accent headings establish hierarchy without redundant section codes", asyn
 
   const modules = [
     ["Password Profiles", "#profilesView", "Password Profiles"],
-    ["Vault Health", "#healthView", "Vault Health"],
+    ["Ring Health", "#healthView", "Ring Health"],
     ["Backups", "#backupsView", "Encrypted Backups"],
     ["Settings", "#settingsView", "Settings"],
     ["Help", "#helpView", "Help"]
@@ -479,7 +559,7 @@ test("Help documents every module, setting, and keyboard route", async ({ page }
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await page.getByRole("menuitem", { name: /^Help/ }).click();
   await expect(page.locator("#viewTitle")).toHaveText("Help");
-  for (const heading of ["Getting started", "Create, unlock & recovery", "Vault (Ring & Qi editor)", "Password profiles", "Vault health", "Encrypted backups", "Settings", "Navigation & shortcuts"]) {
+  for (const heading of ["Getting started", "Create, unlock & recovery", "Ring & Qi editor", "Password profiles", "Ring health", "Encrypted backups", "Settings", "Navigation & shortcuts"]) {
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
   for (const setting of ["Auto-lock minutes", "Clipboard clear seconds", "Theme", "Button display", "Backup directory", "Rotate master password", "Replace recovery key"]) {
@@ -510,12 +590,14 @@ test("Help documents every module, setting, and keyboard route", async ({ page }
 });
 
 test("ring categories expose collapsible groups with live counters", async ({ page }) => {
-  const work = page.locator("details.category-group").filter({ has: page.getByText("Work", { exact: true }) });
-  const personal = page.locator("details.category-group").filter({ has: page.getByText("Personal", { exact: true }) });
+  const work = page.locator(".category-group").filter({ has: page.getByText("Work", { exact: true }) });
+  const personal = page.locator(".category-group").filter({ has: page.getByText("Personal", { exact: true }) });
+  const workDisclosure = work.locator(".category-disclosure");
+  const personalDisclosure = personal.locator(".category-disclosure");
 
   await expect(work.locator(".category-count")).toHaveText("2");
   await expect(personal.locator(".category-count")).toHaveText("1");
-  await expect(work).not.toHaveAttribute("open", "");
+  await expect(workDisclosure).not.toHaveAttribute("open", "");
   await expect(work.getByRole("button", { name: /Admin/ })).toBeHidden();
   await expect(page.getByRole("button", { name: "Collapse all categories" })).toBeDisabled();
   const chevron = await work.locator(".category-chevron").evaluate((element) => {
@@ -527,27 +609,27 @@ test("ring categories expose collapsible groups with live counters", async ({ pa
   await page.getByRole("button", { name: "Expand all categories" }).click();
   await expect(work.getByRole("button", { name: "Admin", exact: true }).locator("strong")).toHaveText("Admin");
   await expect(work).not.toContainText("admin@example.com");
-  await expect(work).toHaveAttribute("open", "");
-  await expect(personal).toHaveAttribute("open", "");
+  await expect(workDisclosure).toHaveAttribute("open", "");
+  await expect(personalDisclosure).toHaveAttribute("open", "");
   await page.getByRole("button", { name: "Collapse all categories" }).click();
-  await expect(work).not.toHaveAttribute("open", "");
+  await expect(workDisclosure).not.toHaveAttribute("open", "");
   await work.locator("summary").click();
   await expect(work.getByRole("button", { name: "Admin", exact: true })).toBeVisible();
 });
 
 test("selecting Ring entries preserves every expanded category", async ({ page }) => {
   await page.getByRole("button", { name: "Expand all categories" }).click();
-  const categories = page.locator("#itemList > details.category-group");
+  const categories = page.locator("#itemList > .category-group");
   await expect(categories).toHaveCount(2);
 
   for (const name of ["Admin", "Passport", "Billing", "Admin"]) {
     await page.getByRole("button", { name, exact: true }).click();
-    for (const category of await categories.all()) await expect(category).toHaveAttribute("open", "");
+    for (const category of await categories.all()) await expect(category.locator(".category-disclosure")).toHaveAttribute("open", "");
   }
 });
 
 test("Ring sorting cycles through alphabetic modes and preserves draggable custom order", async ({ page }) => {
-  const categoryNames = () => page.locator("#itemList > .category-group > .category-summary strong").allTextContents();
+  const categoryNames = () => page.locator("#itemList > .category-group > .category-disclosure > .category-summary strong").allTextContents();
   const sortButton = page.locator("#ringSortMode");
   await expect(sortButton.locator(".button-label")).toHaveText("Custom");
   expect(await categoryNames()).toEqual(["Personal", "Work"]);
@@ -561,12 +643,17 @@ test("Ring sorting cycles through alphabetic modes and preserves draggable custo
   await sortButton.click();
   await expect(sortButton.locator(".button-label")).toHaveText("Custom");
 
-  const workHandle = page.locator('.drag-handle[data-order-kind="category"][data-order-id="Work"]');
-  const personalGroup = page.locator("#itemList > .category-group").filter({ has: page.getByText("Personal", { exact: true }) });
-  await workHandle.dragTo(personalGroup, { targetPosition: { x: 40, y: 2 } });
-  expect(await categoryNames()).toEqual(["Work", "Personal"]);
-
   const workGroup = page.locator("#itemList > .category-group").filter({ has: page.getByText("Work", { exact: true }) });
+  const workHandle = page.locator('.drag-handle[data-order-kind="category"][data-order-id="Work"]');
+  await expect(workHandle).toHaveAttribute("tabindex", "0");
+  await workHandle.focus();
+  await page.keyboard.press("Tab");
+  await expect(workGroup.locator("summary")).toBeFocused();
+  await workHandle.focus();
+  await page.keyboard.press("Home");
+  await expect.poll(categoryNames).toEqual(["Work", "Personal"]);
+  await expect(workHandle).toBeFocused();
+
   await workGroup.locator("summary").click();
   const billingHandle = workGroup.locator('.drag-handle[data-order-kind="item"][data-order-id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]');
   const adminRow = workGroup.locator(".category-item-row").filter({ has: page.getByRole("button", { name: "Admin", exact: true }) });
@@ -599,24 +686,24 @@ test("switching Qi offers save, discard, and stay choices", async ({ page }) => 
 test("list controls align and profile rows show unclipped names only", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   await expect(page.locator("#qiringView > .master-pane")).toHaveCSS("width", "265px");
-  const ringHeader = await page.locator("#qiringView .pane-heading").evaluate((heading) => {
-    const title = heading.querySelector("h2").getBoundingClientRect();
-    const tools = heading.querySelector(".pane-tools").getBoundingClientRect();
-    const sortButton = heading.querySelector("#ringSortMode").getBoundingClientRect();
-    const sortLabel = heading.querySelector("#ringSortMode .button-label").getBoundingClientRect();
-    const bounds = heading.getBoundingClientRect();
+  const ringControls = await page.locator("#qiringView .ring-controls").evaluate((controls) => {
+    const search = controls.querySelector(".ring-search-row").getBoundingClientRect();
+    const tag = controls.querySelector(".tag-filter").getBoundingClientRect();
+    const tools = controls.querySelector(".ring-pane-tools").getBoundingClientRect();
+    const sortButton = controls.querySelector("#ringSortMode").getBoundingClientRect();
+    const sortLabel = controls.querySelector("#ringSortMode .button-label").getBoundingClientRect();
+    const bounds = controls.getBoundingClientRect();
     return {
-      titleCenter: title.top + title.height / 2,
-      toolsCenter: tools.top + tools.height / 2,
-      toolsInside: tools.right <= bounds.right,
+      correctOrder: search.bottom <= tag.top && tag.bottom <= tools.top,
+      toolsInside: tools.left >= bounds.left && tools.right <= bounds.right,
       sortLabelFits: sortLabel.height <= sortButton.height
     };
   });
-  expect(Math.abs(ringHeader.titleCenter - ringHeader.toolsCenter)).toBeLessThan(1);
-  expect(ringHeader.toolsInside).toBe(true);
-  expect(ringHeader.sortLabelFits).toBe(true);
-  const vaultHeights = await page.locator("#searchInput, #clearSearch").evaluateAll((controls) => controls.map((control) => control.getBoundingClientRect().height));
-  expect(new Set(vaultHeights).size).toBe(1);
+  expect(ringControls.correctOrder).toBe(true);
+  expect(ringControls.toolsInside).toBe(true);
+  expect(ringControls.sortLabelFits).toBe(true);
+  const ringHeights = await page.locator("#searchInput, #clearSearch").evaluateAll((controls) => controls.map((control) => control.getBoundingClientRect().height));
+  expect(new Set(ringHeights).size).toBe(1);
   const counterHeights = await page.locator("#itemCount, #ringSortMode, #expandCategories, #collapseCategories").evaluateAll((controls) => controls.map((control) => control.getBoundingClientRect().height));
   expect(new Set(counterHeights).size).toBe(1);
 
@@ -627,7 +714,7 @@ test("list controls align and profile rows show unclipped names only", async ({ 
   await expect(profileRow).not.toContainText("CHARACTERS");
 });
 
-test("light theme styles native selects and save-before-lock persists settings", async ({ page }) => {
+test("light theme styles controls and survives a fresh locked startup", async ({ page }) => {
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
   await page.getByLabel("Theme").selectOption("light");
@@ -646,10 +733,80 @@ test("light theme styles native selects and save-before-lock persists settings",
   await expect(page.locator(".toast")).toHaveCount(0);
   await expect(page.locator(".auth-brand")).toHaveCSS("background-color", "rgb(248, 251, 249)");
 
-  await page.locator("#unlockMaster").fill("correct horse battery staple");
-  await page.getByRole("button", { name: "Unlock", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Ring", exact: true })).toBeVisible({ timeout: 15_000 });
+  await page.reload();
+  await expect(page.locator("#unlockScreen")).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(page.locator(".auth-brand")).toHaveCSS("background-color", "rgb(248, 251, 249)");
+});
+
+test("recovery replacement is saved independently of the settings form", async ({ page }) => {
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /Settings/ }).click();
+
+  const saveSettings = page.getByRole("button", { name: "Save Settings" });
+  await expect(saveSettings).toBeDisabled();
+  await expect(page.locator("#recoveryKeyStatus")).toContainText("saved immediately");
+
+  await page.locator("#recoveryMasterPassword").fill("correct horse battery staple");
+  await page.getByRole("button", { name: "Show recovery master password" }).click();
+  await expect(page.locator("#recoveryMasterPassword")).toHaveAttribute("type", "text");
+  await expect(saveSettings).toBeDisabled();
+  await page.getByRole("button", { name: "Replace recovery key" }).click();
+  await page.getByRole("button", { name: "Replace key", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Store this key offline" });
+  await expect(dialog).toBeVisible();
+  await expect(page.locator("#recoveryMasterPassword")).toHaveAttribute("type", "password");
+  await expect(page.locator("#recoveryKeyStatus")).toContainText("replaced and saved");
+  await expect(page.locator("#recoveryActionStatus")).toContainText("already saved");
+  await expect(page.locator(".toast")).toHaveCount(0);
+  await page.getByLabel("Type the final six characters of the key").fill("123456");
+  await page.getByLabel("I stored this recovery key somewhere safe.").check();
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect(page.locator("#recoveryKeyStatus")).toHaveText("Recovery key replaced and saved. No settings save is required.");
+  await expect(saveSettings).toBeDisabled();
+});
+
+test("master password rotation confirms, measures, reveals, and clears secret fields", async ({ page }) => {
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /Settings/ }).click();
+
+  const nextPassword = "A very strong replacement 42!";
+  await page.locator("#oldMasterPassword").fill("correct horse battery staple");
+  await page.locator("#newMasterPassword").fill(nextPassword);
+  await page.locator("#newMasterPasswordConfirm").fill(nextPassword);
+  await expect(page.locator("#newMasterPasswordStrengthLabel")).toHaveText("Very strong");
+
+  await page.getByRole("button", { name: "Show current master password" }).click();
+  await expect(page.locator("#oldMasterPassword")).toHaveAttribute("type", "text");
+  await page.locator("#toggleNewMasterPassword").click();
+  await expect(page.locator("#newMasterPassword")).toHaveAttribute("type", "text");
+  await expect(page.locator("#newMasterPasswordConfirm")).toHaveAttribute("type", "password");
+  await page.getByRole("button", { name: "Show confirm new master password" }).click();
+  await expect(page.locator("#newMasterPasswordConfirm")).toHaveAttribute("type", "text");
+  await page.getByRole("button", { name: "Rotate master password" }).click();
+  await page.getByRole("button", { name: "Rotate password", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__rotatedMasterPassword)).toEqual({
+    oldPassword: "correct horse battery staple",
+    newPassword: nextPassword
+  });
+  await expect(page.locator("#newMasterPassword")).toHaveValue("");
+  await expect(page.locator("#newMasterPasswordStrengthLabel")).toHaveText("No password");
+
+  await page.locator("#oldMasterPassword").fill("temporary current secret");
+  await page.locator("#newMasterPassword").fill("temporary replacement secret 42!");
+  await page.locator("#newMasterPasswordConfirm").fill("temporary replacement secret 42!");
+  await page.locator("#recoveryMasterPassword").fill("temporary recovery secret");
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /Backups/ }).click();
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /Settings/ }).click();
+  for (const selector of ["#oldMasterPassword", "#newMasterPassword", "#newMasterPasswordConfirm", "#recoveryMasterPassword"]) {
+    await expect(page.locator(selector)).toHaveValue("");
+    await expect(page.locator(selector)).toHaveAttribute("type", "password");
+  }
 });
 
 test("button display preference and encrypted Qi icons update the interface", async ({ page }) => {
@@ -674,8 +831,8 @@ test("button display preference and encrypted Qi icons update the interface", as
 });
 
 test("standard workspace controls share a common height", async ({ page }) => {
-  for (const menuName of ["Vault", "Password Profiles", "Vault Health", "Backups", "Settings"]) {
-    if (menuName !== "Vault") {
+  for (const menuName of ["Ring", "Password Profiles", "Ring Health", "Backups", "Settings"]) {
+    if (menuName !== "Ring") {
       await page.getByRole("button", { name: "Open navigation menu" }).click();
       await page.getByRole("menuitem", { name: new RegExp(menuName) }).click();
     }
@@ -690,9 +847,17 @@ test("backup and credential actions keep separation from their fields", async ({
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await page.getByRole("menuitem", { name: /Backups/ }).click();
   await expect(page.locator("#exportBackup")).toHaveCSS("margin-top", "12px");
+  await page.locator("#backupPassphrase").fill("export backup secret");
+  await page.getByRole("button", { name: "Show export backup passphrase" }).click();
+  await expect(page.locator("#backupPassphrase")).toHaveAttribute("type", "text");
+  await page.locator("#restorePassphrase").fill("restore backup secret");
+  await page.getByRole("button", { name: "Show restore backup passphrase" }).click();
+  await expect(page.locator("#restorePassphrase")).toHaveAttribute("type", "text");
 
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
+  await expect(page.locator("#backupPassphrase")).toHaveAttribute("type", "password");
+  await expect(page.locator("#restorePassphrase")).toHaveAttribute("type", "password");
   await expect(page.locator("#rotateMaster")).toHaveCSS("margin-top", "12px");
   await expect(page.locator("#regenerateRecovery")).toHaveCSS("margin-top", "12px");
 });
@@ -723,12 +888,29 @@ test("Settings navigation uses a gear icon", async ({ page }) => {
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   const settingsIcon = page.getByRole("menuitem", { name: /Settings/ }).locator("svg path").first();
   await expect(settingsIcon).toHaveAttribute("d", /^M12\.22 2h-/);
+  const ringIcon = page.getByRole("menuitem", { name: /^Ring/ }).locator("svg path").first();
+  await expect(ringIcon).toHaveAttribute("d", /^M11 3a7 7/);
+});
+
+test("shortcut hints follow the current operating system", async ({ page }) => {
+  const commandKey = await page.evaluate(() => {
+    const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent;
+    return /mac|iphone|ipad|ipod/i.test(platform);
+  });
+  const modifier = commandKey ? "⌘" : "Ctrl";
+
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await expect(page.getByRole("menuitem", { name: "Ring", exact: true }).locator("kbd")).toHaveText(commandKey ? "⌘1" : "Ctrl+1");
+  await page.getByRole("menuitem", { name: /Help/ }).click();
+  await expect(page.locator("#help-shortcuts [data-shortcut-modifier]")).toHaveText(modifier);
+  await expect(page.locator('#help-shortcuts [data-shortcut="K"]')).toHaveText(commandKey ? "⌘K" : "Ctrl+K");
+  await expect(page.locator('#help-shortcuts [data-shortcut="Shift+U"]')).toHaveText(commandKey ? "⌘⇧U" : "Ctrl+Shift+U");
 });
 
 test("all authenticated modules and keyboard navigation remain usable", async ({ page }) => {
   const modules = [
     ["Password Profiles", "#profilesView", "Password Profiles"],
-    ["Vault Health", "#healthView", "Vault Health"],
+    ["Ring Health", "#healthView", "Ring Health"],
     ["Backups", "#backupsView", "Encrypted Backups"],
     ["Settings", "#settingsView", "Settings"],
     ["Help", "#helpView", "Help"]
@@ -753,17 +935,17 @@ test("all authenticated modules and keyboard navigation remain usable", async ({
 test("unsaved navigation offers save, discard, and stay choices", async ({ page }) => {
   await page.locator("#itemTitle").fill("Unsaved credential");
   await page.getByRole("button", { name: "Open navigation menu" }).click();
-  await page.getByRole("menuitem", { name: /Vault Health/ }).click();
+  await page.getByRole("menuitem", { name: /Ring Health/ }).click();
   const prompt = page.getByRole("dialog", { name: "Save changes?" });
   await expect(prompt).toBeVisible();
-  await expect(prompt).toContainText("Save your changes before opening Vault Health?");
+  await expect(prompt).toContainText("Save your changes before opening Ring Health?");
   await prompt.getByRole("button", { name: "Stay" }).click();
-  await expect(page.locator("#viewTitle")).toHaveText("Vault");
+  await expect(page.locator("#viewTitle")).toHaveText("Ring");
 
   await page.getByRole("button", { name: "Open navigation menu" }).click();
-  await page.getByRole("menuitem", { name: /Vault Health/ }).click();
+  await page.getByRole("menuitem", { name: /Ring Health/ }).click();
   await prompt.getByRole("button", { name: "Save & Continue" }).click();
-  await expect(page.locator("#viewTitle")).toHaveText("Vault Health");
+  await expect(page.locator("#viewTitle")).toHaveText("Ring Health");
   await expect(page.locator("#healthIssues")).toContainText("No weak, reused, or old passwords");
   await expect(page.locator("#toastRegion")).toHaveAttribute("aria-live", "polite");
 });

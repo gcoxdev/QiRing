@@ -11,7 +11,8 @@ export const vaultApi = Object.freeze({
   unlockRecovery: (recoveryKey, newMasterPassword) =>
     invoke("unlock_vault_recovery", { recoveryKey, newMasterPassword }),
   regenerateRecovery: (masterPassword) => invoke("regenerate_recovery_key", { masterPassword }),
-  saveRecoveryKey: (recoveryKey) => invoke("save_recovery_key_dialog", { recoveryKey }),
+  saveRecoveryKey: (recoveryKey, basename) => invoke("save_recovery_key_dialog", { recoveryKey, basename }),
+  prepareRecoveryPrint: (basename) => invoke("prepare_recovery_print", { basename }),
   rotateMaster: (oldPassword, newPassword) =>
     invoke("rotate_master_password", { oldPassword, newPassword }),
   lock: () => invoke("lock_vault"),

@@ -91,11 +91,11 @@ pub enum VaultFile {
 
 #[derive(Debug, Error)]
 pub enum StorageError {
-    #[error("vault data is corrupt or unreadable")]
+    #[error("Ring data is corrupt or unreadable")]
     Corrupt,
-    #[error("vault file exceeds the maximum supported size")]
+    #[error("Ring file exceeds the maximum supported size")]
     TooLarge,
-    #[error("vault path must not be a symbolic link")]
+    #[error("Ring path must not be a symbolic link")]
     Symlink,
 }
 
@@ -137,7 +137,7 @@ pub fn metadata_aad(metadata: &VaultMetadata, purpose: &str) -> anyhow::Result<V
         master_kdf,
         recovery_kdf,
     })
-    .context("serialize authenticated vault metadata")
+    .context("serialize authenticated Ring metadata")
 }
 
 pub fn encrypt_vault_payload(
@@ -168,7 +168,7 @@ pub fn decrypt_legacy_vault_payload(vault_blob: &CipherBlob, dek: &[u8; KEY_LEN]
 
 pub fn save_encrypted_vault(path: &Path, vault: &EncryptedVault) -> anyhow::Result<()> {
     vault.metadata.validate()?;
-    let json = serde_json::to_vec_pretty(vault).context("failed to serialize vault")?;
+    let json = serde_json::to_vec_pretty(vault).context("failed to serialize Ring")?;
     save_bytes_atomic(path, &json)
 }
 
@@ -179,7 +179,7 @@ pub fn save_encrypted_vault(path: &Path, vault: &EncryptedVault) -> anyhow::Resu
 /// silently narrowing its permissions is a surprising side effect on a
 /// location the user may share with other tools or users.
 pub fn save_bytes_atomic(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
-    let parent = path.parent().context("vault path must have parent directory")?;
+    let parent = path.parent().context("Ring path must have parent directory")?;
     ensure_private_directory(parent)?;
     save_bytes_atomic_at_existing_directory(path, bytes)
 }
@@ -197,7 +197,7 @@ pub fn save_bytes_atomic_user_directory(path: &Path, bytes: &[u8]) -> anyhow::Re
 }
 
 fn save_bytes_atomic_at_existing_directory(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
-    let parent = path.parent().context("vault path must have parent directory")?;
+    let parent = path.parent().context("Ring path must have parent directory")?;
     reject_symlink(path)?;
 
     let mut options = AtomicWriteFile::options();
@@ -209,11 +209,11 @@ fn save_bytes_atomic_at_existing_directory(path: &Path, bytes: &[u8]) -> anyhow:
         StdOpenOptionsExt::mode(&mut options, 0o600);
     }
 
-    let mut file = options.open(path).context("failed to open atomic vault writer")?;
+    let mut file = options.open(path).context("failed to open atomic Ring writer")?;
     file.write_all(bytes)
-        .context("failed to write complete vault file")?;
-    file.flush().context("failed to flush vault file")?;
-    file.commit().context("failed to atomically commit vault file")?;
+        .context("failed to write complete Ring file")?;
+    file.flush().context("failed to flush Ring file")?;
+    file.commit().context("failed to atomically commit Ring file")?;
     enforce_private_file(path)?;
     sync_parent_directory(parent)
 }
@@ -221,7 +221,7 @@ fn save_bytes_atomic_at_existing_directory(path: &Path, bytes: &[u8]) -> anyhow:
 pub fn load_encrypted_vault(path: &Path) -> anyhow::Result<EncryptedVault> {
     match load_vault_file(path)? {
         VaultFile::Current(vault) => Ok(vault),
-        VaultFile::Legacy(_) => anyhow::bail!("legacy vault must be migrated before use"),
+        VaultFile::Legacy(_) => anyhow::bail!("legacy Ring must be migrated before use"),
     }
 }
 
@@ -282,11 +282,11 @@ fn validate_cipher_shapes(wrapped: &WrappedKeys, vault_blob: &CipherBlob) -> any
 
 pub fn read_bounded(path: &Path, maximum: u64) -> anyhow::Result<Vec<u8>> {
     reject_symlink(path)?;
-    let metadata = fs::metadata(path).context("failed to inspect vault file")?;
+    let metadata = fs::metadata(path).context("failed to inspect Ring file")?;
     if metadata.len() > maximum {
         return Err(StorageError::TooLarge.into());
     }
-    fs::read(path).context("failed to read vault file")
+    fs::read(path).context("failed to read Ring file")
 }
 
 pub fn ensure_private_directory(path: &Path) -> anyhow::Result<()> {
@@ -305,7 +305,7 @@ fn enforce_private_file(path: &Path) -> anyhow::Result<()> {
     {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-            .context("failed to restrict vault file permissions")?;
+            .context("failed to restrict Ring file permissions")?;
     }
     Ok(())
 }

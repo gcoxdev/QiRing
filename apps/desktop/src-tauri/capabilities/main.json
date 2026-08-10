@@ -11,6 +11,7 @@
     "allow-unlock-vault-recovery",
     "allow-regenerate-recovery-key",
     "allow-save-recovery-key-dialog",
+    "allow-prepare-recovery-print",
     "allow-lock-vault",
     "allow-touch-activity",
     "allow-add-item",

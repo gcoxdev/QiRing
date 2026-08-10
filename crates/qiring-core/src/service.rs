@@ -101,14 +101,20 @@ impl VaultService {
     pub fn unlock_vault_master(&mut self, master_password: &str) -> anyhow::Result<UnlockResult> {
         validate_master_password(master_password)?;
         match load_vault_file(&self.vault_path)? {
-            VaultFile::Current(encrypted) => {
+            VaultFile::Current(mut encrypted) => {
                 let dek = unlock_current_master(&encrypted, master_password)?;
                 let clear = Zeroizing::new(
                     decrypt_vault_payload(&encrypted.vault_blob, &dek, &encrypted.metadata)
                         .map_err(|_| CoreError::AuthenticationFailed)?,
                 );
                 let mut document = parse_document(&clear)?;
-                ensure_document_defaults(&mut document);
+                if ensure_document_defaults(&mut document) {
+                    let document_bytes = Zeroizing::new(
+                        serde_json::to_vec(&document).context("serialize migrated Ring document")?,
+                    );
+                    encrypted.vault_blob = encrypt_vault_payload(&document_bytes, &dek, &encrypted.metadata)?;
+                    save_encrypted_vault(&self.vault_path, &encrypted)?;
+                }
                 let session = self.start_session(dek, document);
                 Ok(UnlockResult {
                     session,
@@ -199,7 +205,7 @@ impl VaultService {
         let dek = Zeroizing::new(unlock_current_master(&encrypted, master_password)?);
         let document_bytes = Zeroizing::new({
             let session = self.session_mut()?;
-            serde_json::to_vec(&session.doc).context("serialize vault document")?
+            serde_json::to_vec(&session.doc).context("serialize Ring document")?
         });
         let next_key = generate_recovery_key();
         encrypted.metadata.recovery_kdf = KdfSlot {
@@ -319,6 +325,7 @@ impl VaultService {
             folder: input.folder,
             icon_data_url: input.icon_data_url,
             security_questions: input.security_questions,
+            custom_fields: input.custom_fields,
             totp_secret: input.totp_secret,
             password_history: Vec::new(),
             created_at: now,
@@ -379,6 +386,9 @@ impl VaultService {
         }
         if let Some(questions) = patch.security_questions {
             item.security_questions = questions;
+        }
+        if let Some(fields) = patch.custom_fields {
+            item.custom_fields = fields;
         }
         if let Some(secret) = patch.totp_secret {
             item.totp_secret = secret;
@@ -452,6 +462,10 @@ impl VaultService {
                         .to_lowercase()
                         .contains(&query)
                     && !item.tags.iter().any(|tag| tag.to_lowercase().contains(&query))
+                    && !item.custom_fields.iter().any(|field| {
+                        field.label.to_lowercase().contains(&query)
+                            || field.value.to_lowercase().contains(&query)
+                    })
                 {
                     return false;
                 }
@@ -533,7 +547,7 @@ impl VaultService {
         let is_new = profile.id.is_nil() || !self.session_mut()?.doc.profiles.contains_key(&profile.id);
         if is_new && self.session_mut()?.doc.profiles.len() >= 100 {
             return Err(
-                CoreError::InvalidInput("a vault may contain at most 100 password profiles".into()).into(),
+                CoreError::InvalidInput("a Ring may contain at most 100 password profiles".into()).into(),
             );
         }
         if profile.id.is_nil() {
@@ -615,7 +629,9 @@ impl VaultService {
             .iter()
             .filter(|issue| matches!(issue.kind, HealthIssueKind::Old))
             .count();
-        let analyzed_items = password_items.values().map(Vec::len).sum();
+        // Every Qi is inspected by this pass, even though password-specific
+        // findings only apply to entries that contain a password.
+        let analyzed_items = session.doc.items.len();
         Ok(HealthReport {
             analyzed_items,
             weak_count,
@@ -639,7 +655,7 @@ impl VaultService {
             .include_settings;
         let path = path.as_ref();
         if path == self.vault_path {
-            return Err(CoreError::InvalidInput("backup path must differ from vault path".into()).into());
+            return Err(CoreError::InvalidInput("backup path must differ from Ring path".into()).into());
         }
         let vault_bytes = if include_settings {
             read_bounded(&self.vault_path, qiring_storage::MAX_VAULT_FILE_BYTES)?
@@ -667,7 +683,7 @@ impl VaultService {
             };
             let mut portable = load_encrypted_vault(&self.vault_path)?;
             portable.vault_blob = encrypt_vault_payload(&document_bytes, &dek, &portable.metadata)?;
-            serde_json::to_vec_pretty(&portable).context("serialize portable vault backup")?
+            serde_json::to_vec_pretty(&portable).context("serialize portable Ring backup")?
         };
         let metadata = BackupMetadata {
             schema_version: 2,
@@ -751,7 +767,7 @@ impl VaultService {
         let (current_vault_id, _, _) = vault_identity(&current_bytes)?;
         if vault_id != current_vault_id {
             return Err(CoreError::InvalidInput(
-                "snapshot belongs to a different vault; restore refused".into(),
+                "snapshot belongs to a different Ring; restore refused".into(),
             )
             .into());
         }
@@ -853,7 +869,7 @@ impl VaultService {
         let (bytes, dek, preferences) = {
             let session = self.session_mut()?;
             (
-                Zeroizing::new(serde_json::to_vec(&session.doc).context("serialize vault document")?),
+                Zeroizing::new(serde_json::to_vec(&session.doc).context("serialize Ring document")?),
                 Zeroizing::new(*session.dek),
                 session.doc.settings.backup_preferences.clone(),
             )
@@ -886,7 +902,7 @@ impl VaultService {
         let directory = self
             .vault_path
             .parent()
-            .context("vault path has no parent directory")?
+            .context("Ring path has no parent directory")?
             .join("restore-safety");
         let path = directory.join(format!(
             "pre-restore-{}-{}.qiring-snapshot",
@@ -938,7 +954,7 @@ fn build_current_vault(
     )?;
     let master_aad = metadata_aad(&metadata, "master-wrapped-dek")?;
     let recovery_aad = metadata_aad(&metadata, "recovery-wrapped-dek")?;
-    let bytes = Zeroizing::new(serde_json::to_vec(document).context("serialize vault document")?);
+    let bytes = Zeroizing::new(serde_json::to_vec(document).context("serialize Ring document")?);
     Ok(EncryptedVault {
         wrapped_keys: WrappedKeys {
             wrapped_dek_by_master: wrap_dek_with_aad(master_kek.as_ref(), dek, &master_aad)?,
@@ -960,16 +976,32 @@ fn unlock_current_master(encrypted: &EncryptedVault, master_password: &str) -> a
 
 fn parse_document(bytes: &[u8]) -> anyhow::Result<VaultDocument> {
     if bytes.len() > qiring_storage::MAX_VAULT_FILE_BYTES as usize {
-        return Err(CoreError::InvalidInput("decrypted vault document is too large".into()).into());
+        return Err(CoreError::InvalidInput("decrypted Ring document is too large".into()).into());
     }
-    serde_json::from_slice(bytes).context("deserialize vault document")
+    serde_json::from_slice(bytes).context("deserialize Ring document")
 }
 
-fn ensure_document_defaults(document: &mut VaultDocument) {
+fn ensure_document_defaults(document: &mut VaultDocument) -> bool {
+    let mut changed = false;
+    if document.default_profiles_version < DEFAULT_PROFILES_VERSION {
+        for profile in default_password_profiles() {
+            let already_present = document
+                .profiles
+                .values()
+                .any(|existing| existing.name.eq_ignore_ascii_case(&profile.name));
+            if !already_present {
+                document.profiles.insert(profile.id, profile);
+            }
+        }
+        document.default_profiles_version = DEFAULT_PROFILES_VERSION;
+        changed = true;
+    }
     if document.profiles.is_empty() {
         let profile = PasswordProfile::default();
         document.profiles.insert(profile.id, profile);
+        changed = true;
     }
+    changed
 }
 
 fn recovery_material(key: &str) -> RecoveryMaterial {
@@ -1167,6 +1199,10 @@ fn zeroize_item(item: &mut VaultItem) {
         question.question.zeroize();
         question.answer.zeroize();
     }
+    for field in &mut item.custom_fields {
+        field.label.zeroize();
+        field.value.zeroize();
+    }
     for entry in &mut item.password_history {
         entry.password.zeroize();
     }
@@ -1196,6 +1232,7 @@ mod tests {
             folder: Some("work".to_string()),
             icon_data_url: None,
             security_questions: Vec::new(),
+            custom_fields: Vec::new(),
             totp_secret: None,
         }
     }
@@ -1233,6 +1270,75 @@ mod tests {
     }
 
     #[test]
+    fn health_report_counts_every_ring_entry() {
+        let (_dir, mut service) = test_service();
+        service
+            .create_vault(MASTER, AppSettings::default())
+            .expect("create");
+        service.unlock_vault_master(MASTER).expect("unlock");
+        service
+            .add_item(login("Login one", "A strong password 42!"))
+            .expect("add first login");
+        service
+            .add_item(login("Login two", "Another strong password 84!"))
+            .expect("add second login");
+        let mut note = login("Recovery notes", "unused");
+        note.item_type = VaultItemType::SecureNote;
+        note.username = None;
+        note.password = None;
+        note.url = None;
+        note.notes = Some("Offline recovery instructions".into());
+        service.add_item(note).expect("add secure note");
+
+        let report = service.health_report().expect("health report");
+        assert_eq!(report.analyzed_items, 3);
+    }
+
+    #[test]
+    fn common_password_profiles_are_installed_once() {
+        let existing = PasswordProfile::default();
+        let mut profiles = HashMap::new();
+        profiles.insert(existing.id, existing);
+        let mut document = VaultDocument {
+            profiles,
+            default_profiles_version: 0,
+            ..Default::default()
+        };
+
+        assert!(ensure_document_defaults(&mut document));
+        let mut names = document
+            .profiles
+            .values()
+            .map(|profile| profile.name.as_str())
+            .collect::<Vec<_>>();
+        names.sort_unstable();
+        assert_eq!(
+            names,
+            [
+                "Alphanumeric 20",
+                "Strong 20",
+                "Strong 32",
+                "Website Compatible 16"
+            ]
+        );
+        for profile in document.profiles.values() {
+            validate_profile(profile).expect("valid built-in profile");
+        }
+
+        let strong_32 = document
+            .profiles
+            .iter()
+            .find_map(|(id, profile)| (profile.name == "Strong 32").then_some(*id))
+            .expect("Strong 32 profile");
+        document.profiles.remove(&strong_32);
+        assert!(!ensure_document_defaults(&mut document));
+        assert!(!document
+            .profiles
+            .values()
+            .any(|profile| profile.name == "Strong 32"));
+    }
+
+    #[test]
     fn item_icons_round_trip_inside_the_vault_document() {
         let (_dir, mut service) = test_service();
         service
@@ -1252,6 +1358,54 @@ mod tests {
             service.get_item(item_id).expect("get").icon_data_url.as_deref(),
             Some("data:image/png;base64,iVBORw0KGgo=")
         );
+    }
+
+    #[test]
+    fn custom_fields_round_trip_update_and_participate_in_search() {
+        let (_dir, mut service) = test_service();
+        service
+            .create_vault(MASTER, AppSettings::default())
+            .expect("create");
+        service.unlock_vault_master(MASTER).expect("unlock");
+        let mut input = login("Membership", "secret");
+        input.custom_fields = vec![CustomField {
+            label: "Member number".into(),
+            value: "QR-1842".into(),
+            concealed: false,
+        }];
+        let item_id = service.add_item(input).expect("add");
+
+        let stored = service.get_item(item_id).expect("get");
+        assert_eq!(stored.custom_fields[0].label, "Member number");
+        assert_eq!(stored.custom_fields[0].value, "QR-1842");
+        assert!(!stored.custom_fields[0].concealed);
+        assert_eq!(
+            service
+                .list_items(ListFilter {
+                    query: Some("1842".into()),
+                    ..Default::default()
+                })
+                .expect("search custom field")
+                .len(),
+            1
+        );
+
+        service
+            .update_item(
+                item_id,
+                ItemPatch {
+                    custom_fields: Some(vec![CustomField {
+                        label: "Door PIN".into(),
+                        value: "7391".into(),
+                        concealed: true,
+                    }]),
+                    ..Default::default()
+                },
+            )
+            .expect("update");
+        let updated = service.get_item(item_id).expect("get updated");
+        assert_eq!(updated.custom_fields[0].label, "Door PIN");
+        assert!(updated.custom_fields[0].concealed);
     }
 
     #[test]

@@ -1,5 +1,8 @@
 import "./styles.css";
+import QRCode from "qrcode";
 import { vaultApi, COMMAND_VERSION } from "./api.js";
+import { renderShortcutLabels } from "./shortcuts.js";
+import { applyThemePreference, persistThemePreference } from "./theme-bootstrap.js";
 import {
   byId, createElement, createIcon, decorateButtons, formatBytes, formatDate, refreshButtonTitles, setButtonIcon, setButtonLabel, setHidden
 } from "./dom.js";
@@ -33,19 +36,19 @@ const elements = Object.fromEntries(
     "profilesView", "healthView", "backupsView", "settingsView", "helpView", "itemCount", "ringSortMode", "expandCategories", "collapseCategories", "searchInput", "tagFilter",
     "clearSearch", "itemList", "itemEditorTitle", "dirtyIndicator", "itemForm", "itemTitle", "itemType",
     "itemFolder", "categoryOptions", "itemTags", "itemIconPreview", "itemIconPlaceholder", "uploadItemIcon", "fetchItemFavicon", "removeItemIcon", "credentialFields", "itemUrl", "openUrlButton",
-    "itemUsername", "copyUsername", "itemPassword", "togglePassword", "copyPassword", "profileSelect",
+    "itemUsername", "copyUsername", "itemPassword", "togglePassword", "copyPassword", "passwordStrength", "passwordStrengthMeter", "passwordStrengthLabel", "profileSelect",
     "generatePassword", "itemTotpSecret", "totpCode", "refreshTotp", "totpRemaining", "itemNotes",
-    "questionSection", "addQuestion", "questionList", "historySection", "historyList", "profileCount",
+    "customFieldSection", "addCustomField", "customFieldList", "questionSection", "addQuestion", "questionList", "historySection", "historyList", "profileCount",
     "profileList", "profileEditorTitle", "profileDirtyIndicator", "profileForm", "profileName", "profileLength",
     "profileRangeSummary",
     "upperMin", "upperMax", "lowerMin", "lowerMax", "numbersMin", "numbersMax", "symbolsMin", "symbolsMax", "allowedSymbols", "avoidAmbiguous",
     "testProfile", "profileTestOutput", "runHealth", "healthAnalyzed", "healthWeak", "healthReused",
-    "healthOld", "healthIssues", "backupPassphrase", "exportBackup", "selectBackup", "selectedBackupPath",
-    "restorePassphrase", "previewBackup", "restoreBackup", "backupPreview", "refreshSnapshots", "snapshotList",
+    "healthOld", "healthIssues", "backupPassphrase", "toggleBackupPassphrase", "exportBackup", "selectBackup", "selectedBackupPath",
+    "restorePassphrase", "toggleRestorePassphrase", "previewBackup", "restoreBackup", "backupPreview", "refreshSnapshots", "snapshotList",
     "settingsForm", "autoLockMinutes", "clipboardSeconds", "lockOnMinimize", "lockOnBlur", "themeSelect", "buttonDisplaySelect",
     "automaticBackups", "includeSettings", "backupRetention", "backupDirectory", "chooseBackupDirectory",
-    "oldMasterPassword", "newMasterPassword", "rotateMaster", "recoveryMasterPassword", "regenerateRecovery",
-    "recoveryDialog", "recoveryKeyOutput", "recoveryFingerprint", "copyRecoveryKey", "saveRecoveryKey", "printRecoveryKey", "recoveryVerify", "recoveryAcknowledged",
+    "oldMasterPassword", "toggleOldMasterPassword", "newMasterPassword", "newMasterPasswordConfirm", "toggleNewMasterPassword", "toggleNewMasterPasswordConfirm", "newMasterPasswordStrength", "newMasterPasswordStrengthMeter", "newMasterPasswordStrengthLabel", "rotateMaster", "recoveryMasterPassword", "toggleRecoveryMasterPassword", "regenerateRecovery", "recoveryKeyStatus",
+    "recoveryDialog", "recoveryKeyOutput", "recoveryFingerprint", "copyRecoveryKey", "saveRecoveryKey", "printRecoveryKey", "toggleRecoveryQr", "recoveryActionStatus", "recoveryQrPanel", "recoveryQr", "recoveryPrintSheet", "recoveryPrintQr", "recoveryPrintKey", "recoveryPrintFingerprint", "recoveryPrintDate", "recoveryVerify", "recoveryAcknowledged",
     "finishRecovery", "unsavedDialog", "unsavedDialogMessage", "stayOnPage", "discardAndContinue", "saveAndContinue",
     "confirmationDialog", "confirmationDialogTitle", "confirmationDialogMessage", "cancelConfirmation", "confirmAction", "toastRegion",
     "helpSearch", "clearHelpSearch", "helpNav", "helpContent", "helpArticles"
@@ -53,6 +56,7 @@ const elements = Object.fromEntries(
 );
 
 decorateButtons();
+renderShortcutLabels();
 
 const views = {
   qiring: elements.qiringView,
@@ -64,9 +68,9 @@ const views = {
 };
 
 const viewLabels = {
-  qiring: "Vault",
+  qiring: "Ring",
   profiles: "Password Profiles",
-  health: "Vault Health",
+  health: "Ring Health",
   backups: "Encrypted Backups",
   settings: "Settings",
   help: "Help"
@@ -230,7 +234,7 @@ function setAuthScreen(name) {
   setHidden(elements.createScreen, name !== "create");
   setHidden(elements.unlockScreen, name !== "unlock");
   state.unlocked = false;
-  document.title = name === "create" ? "Create vault — QiRing" : "Unlock — QiRing";
+  document.title = name === "create" ? "Create Ring — QiRing" : "Unlock — QiRing";
   window.setTimeout(() => (name === "create" ? elements.createMaster : elements.unlockMaster).focus(), 0);
 }
 
@@ -246,11 +250,14 @@ function setUnlockTab(method) {
 }
 
 function showRecoveryCeremony(material, continuation) {
+  clearRecoveryQr();
+  clearRecoveryPrintSheet();
   state.recoveryContinuation = continuation;
   elements.recoveryKeyOutput.textContent = material.recovery_key;
   elements.recoveryFingerprint.textContent = material.recovery_key_fingerprint;
   elements.recoveryAcknowledged.checked = false;
   elements.recoveryVerify.value = "";
+  elements.recoveryActionStatus.textContent = "The replacement is already saved. Store and verify this key before continuing.";
   state.recoveryVerification = material.recovery_key.slice(-6);
   elements.finishRecovery.disabled = true;
   elements.recoveryDialog.showModal();
@@ -266,6 +273,9 @@ async function finishRecoveryCeremony() {
   elements.recoveryKeyOutput.textContent = "";
   elements.recoveryFingerprint.textContent = "";
   elements.recoveryVerify.value = "";
+  elements.recoveryActionStatus.textContent = "";
+  clearRecoveryQr();
+  clearRecoveryPrintSheet();
   if (continuation) await continuation();
 }
 
@@ -279,13 +289,97 @@ function updateRecoveryReady() {
 }
 
 async function saveRecoveryKey() {
-  const path = await vaultApi.saveRecoveryKey(elements.recoveryKeyOutput.textContent);
-  if (path) toast("Recovery key saved to the selected private text file. Move it offline when practical.");
+  const recoveryKey = elements.recoveryKeyOutput.textContent;
+  if (!recoveryKey) throw new Error("The recovery key is no longer available.");
+  const basename = recoveryExportBasename(new Date());
+  elements.recoveryActionStatus.textContent = "Choose a private location for the recovery-key text file…";
+  const path = await vaultApi.saveRecoveryKey(recoveryKey, basename);
+  elements.recoveryActionStatus.textContent = path
+    ? `Recovery key saved as ${basename}.txt. Move it offline when practical.`
+    : "Text-file save canceled. The recovery key remains visible here.";
+}
+
+function clearRecoveryPrintSheet() {
+  elements.recoveryPrintQr.removeAttribute("src");
+  elements.recoveryPrintKey.textContent = "";
+  elements.recoveryPrintFingerprint.textContent = "";
+  elements.recoveryPrintDate.textContent = "";
+}
+
+function localDateStamp(date) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function recoveryExportBasename(date) {
+  return `QiRing-Recovery-Key-${localDateStamp(date)}`;
+}
+
+async function printRecoveryKey() {
+  const recoveryKey = elements.recoveryKeyOutput.textContent;
+  if (!recoveryKey) throw new Error("The recovery key is no longer available.");
+  const generatedAt = new Date();
+  const printBasename = recoveryExportBasename(generatedAt);
+  elements.recoveryPrintKey.textContent = recoveryKey;
+  elements.recoveryPrintFingerprint.textContent = elements.recoveryFingerprint.textContent;
+  elements.recoveryPrintDate.textContent = new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(generatedAt);
+  elements.recoveryPrintQr.src = await QRCode.toDataURL(recoveryKey, {
+    errorCorrectionLevel: "M",
+    margin: 3,
+    width: 384,
+    color: { dark: "#07140d", light: "#ffffff" }
+  });
+  if (typeof elements.recoveryPrintQr.decode === "function") await elements.recoveryPrintQr.decode();
+
+  const previousTitle = document.title;
+  document.title = printBasename;
+  const cleanup = () => {
+    document.title = previousTitle;
+    clearRecoveryPrintSheet();
+  };
+  try {
+    await vaultApi.prepareRecoveryPrint(printBasename);
+    window.addEventListener("afterprint", cleanup, { once: true });
+    window.print();
+  } catch (error) {
+    window.removeEventListener("afterprint", cleanup);
+    cleanup();
+    throw error;
+  }
+}
+
+function clearRecoveryQr() {
+  const context = elements.recoveryQr.getContext("2d");
+  context?.clearRect(0, 0, elements.recoveryQr.width, elements.recoveryQr.height);
+  elements.recoveryQr.width = 1;
+  elements.recoveryQr.height = 1;
+  elements.recoveryQrPanel.hidden = true;
+  elements.toggleRecoveryQr.setAttribute("aria-expanded", "false");
+  setButtonLabel(elements.toggleRecoveryQr, "Show QR code");
+}
+
+async function toggleRecoveryQr() {
+  if (!elements.recoveryQrPanel.hidden) {
+    clearRecoveryQr();
+    elements.toggleRecoveryQr.focus();
+    return;
+  }
+  const recoveryKey = elements.recoveryKeyOutput.textContent;
+  if (!recoveryKey) throw new Error("The recovery key is no longer available.");
+  await QRCode.toCanvas(elements.recoveryQr, recoveryKey, {
+    errorCorrectionLevel: "M",
+    margin: 2,
+    width: 220,
+    color: { dark: "#07140d", light: "#ffffff" }
+  });
+  elements.recoveryQrPanel.hidden = false;
+  elements.toggleRecoveryQr.setAttribute("aria-expanded", "true");
+  setButtonLabel(elements.toggleRecoveryQr, "Hide QR code");
 }
 
 function applyTheme(theme) {
-  const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  document.documentElement.dataset.theme = theme === "light" || (theme === "system" && !systemDark) ? "light" : "dark";
+  applyThemePreference(theme);
 }
 
 function applyButtonDisplay(display) {
@@ -313,12 +407,15 @@ async function enterVault() {
   setHidden(elements.authShell, true);
   setHidden(elements.vaultShell, false);
   applyTheme(settings.theme);
+  persistThemePreference(settings.theme);
   applyButtonDisplay(settings.button_display);
   renderProfiles();
-  if (state.profiles[0]) await selectProfile(state.profiles[0].id, { force: true });
+  const initialProfile = state.profiles.find((profile) => profile.name === "Strong 20") || state.profiles[0];
+  if (initialProfile) await selectProfile(initialProfile.id, { force: true });
   renderItems();
   await newItem({ force: true });
   await navigate("qiring", { force: true, focusHeading: false });
+  elements.itemTitle.focus({ preventScroll: true });
 }
 
 function hasUnsavedChanges() {
@@ -396,6 +493,8 @@ async function navigate(view, { force = false, focusHeading = true } = {}) {
   }
   if (!force && view !== state.view && !await resolveUnsavedNavigation(view)) return;
   remaskPassword();
+  if (state.view === "backups" && view !== "backups") remaskBackupPassphrases();
+  if (state.view === "settings" && view !== "settings") clearSettingsSecrets();
   state.view = view;
   state.itemDirty = false;
   state.profileDirty = false;
@@ -484,6 +583,11 @@ function markSettingsDirty() {
   if (state.suppressDirty) return;
   state.settingsDirty = true;
   updateContextActionState();
+}
+
+function markSettingsDirtyFromControl(event) {
+  if (event.target.matches("#oldMasterPassword, #newMasterPassword, #newMasterPasswordConfirm, #recoveryMasterPassword")) return;
+  markSettingsDirty();
 }
 
 const RING_SORT_MODES = Object.freeze({
@@ -606,7 +710,7 @@ function createDragHandle(kind, id, label, peers) {
     className: "drag-handle",
     attributes: {
       draggable: "true",
-      title: `Drag to reorder ${label}`,
+      title: focusable ? `Drag or use Arrow keys, Home, and End to move ${label}` : `Drag to reorder ${label}`,
       "data-order-kind": kind,
       "data-order-id": id
     }
@@ -615,6 +719,7 @@ function createDragHandle(kind, id, label, peers) {
     handle.setAttribute("role", "button");
     handle.setAttribute("tabindex", "0");
     handle.setAttribute("aria-label", `Move ${label}`);
+    handle.setAttribute("aria-keyshortcuts", "ArrowUp ArrowDown Home End");
   } else {
     handle.setAttribute("aria-hidden", "true");
   }
@@ -671,7 +776,7 @@ function attachCategoryKeyboardReordering(summary, category) {
         : index + (event.key === "ArrowUp" ? -1 : 1);
     if (index < 0 || targetIndex < 0 || targetIndex >= ids.length || targetIndex === index) return;
     moveCustomOrder("category", category, ids[targetIndex], event.key === "ArrowDown" || event.key === "End")
-      .then(() => document.querySelector(`.category-group[data-category="${CSS.escape(category)}"] > summary`)?.focus())
+      .then(() => document.querySelector(`.category-group[data-category="${CSS.escape(category)}"] > .category-disclosure > summary`)?.focus())
       .catch((error) => toast(errorMessage(error), { error: true }));
   });
 }
@@ -736,18 +841,19 @@ function renderItems() {
   updateCategoryActionState(categoryNames, filtering);
   for (const category of orderedCategoryNames(categoryNames)) {
     const items = categories.get(category);
-    const group = createElement("details", {
+    const group = createElement("div", {
       className: "category-group",
       attributes: { "data-category": category }
     });
-    group.open = filtering || state.expandedCategories.has(category);
+    const disclosure = createElement("details", { className: "category-disclosure" });
+    disclosure.open = filtering || state.expandedCategories.has(category);
     const summary = createElement("summary", { className: "category-summary" });
+    let categoryHandle = null;
     if (customSortable) {
       group.classList.add("sortable");
-      summary.append(createDragHandle("category", category, `category ${category}`, {
-        ids: currentCategoryOrder,
-        focusable: false
-      }));
+      categoryHandle = createDragHandle("category", category, `category ${category}`, {
+        ids: currentCategoryOrder
+      });
       attachCategoryKeyboardReordering(summary, category);
       attachDropTarget(group, "category", category);
     }
@@ -758,7 +864,7 @@ function renderItems() {
     );
     summary.addEventListener("click", (event) => {
       if (event.defaultPrevented) return;
-      if (group.open) state.expandedCategories.delete(category);
+      if (disclosure.open) state.expandedCategories.delete(category);
       else state.expandedCategories.add(category);
       updateCategoryActionState(categoryNames, filtering);
     });
@@ -790,7 +896,9 @@ function renderItems() {
       row.append(button);
       entries.append(row);
     }
-    group.append(summary, entries);
+    disclosure.append(summary, entries);
+    if (categoryHandle) group.append(categoryHandle);
+    group.append(disclosure);
     elements.itemList.append(group);
   }
   if (state.items.length === 0) {
@@ -851,11 +959,16 @@ async function newItem({ force = false } = {}) {
     if (decision === "stay") return;
     if (decision === "save" && (!await saveItem() || state.itemDirty)) return;
   }
+  const generationProfileId = state.profiles.find((profile) => profile.name === "Strong 20")?.id
+    || elements.profileSelect.value
+    || state.profiles[0]?.id;
   state.suppressDirty = true;
   state.selectedItemId = null;
   elements.itemForm.reset();
+  if (generationProfileId) elements.profileSelect.value = generationProfileId;
   elements.itemType.value = "login";
   setItemIcon(null);
+  elements.customFieldList.replaceChildren();
   elements.questionList.replaceChildren();
   elements.historyList.replaceChildren();
   elements.historySection.hidden = true;
@@ -865,6 +978,8 @@ async function newItem({ force = false } = {}) {
   state.itemDirty = false;
   state.suppressDirty = false;
   updateItemTypeFields();
+  updatePasswordStrength();
+  updateCustomFieldLimit();
   updateDirtyIndicators();
   remaskPassword();
   renderItems();
@@ -893,6 +1008,8 @@ async function selectItem(id, { force = false } = {}) {
   elements.itemPassword.value = item.password || "";
   elements.itemTotpSecret.value = item.totp_secret || "";
   elements.itemNotes.value = item.notes || "";
+  elements.customFieldList.replaceChildren();
+  for (const field of item.custom_fields || []) addCustomFieldRow(field);
   elements.questionList.replaceChildren();
   for (const question of item.security_questions || []) addQuestionRow(question);
   renderHistory(item.password_history || []);
@@ -900,6 +1017,8 @@ async function selectItem(id, { force = false } = {}) {
   state.itemDirty = false;
   state.suppressDirty = false;
   updateItemTypeFields();
+  updatePasswordStrength();
+  updateCustomFieldLimit();
   updateDirtyIndicators();
   remaskPassword();
   renderItems();
@@ -912,6 +1031,83 @@ function updateItemTypeFields() {
   elements.credentialFields.hidden = !isLogin;
   elements.questionSection.hidden = !isLogin;
   elements.fetchItemFavicon.disabled = !isLogin;
+}
+
+function estimatePasswordStrength(password) {
+  if (!password) return { score: 0, label: "No password" };
+  const length = [...password].length;
+  const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/]
+    .filter((pattern) => pattern.test(password)).length;
+  if (length < 12 || classes < 3) return { score: 1, label: "Weak" };
+  if (length < 16 || classes < 4) return { score: 2, label: "Fair" };
+  if (length < 20) return { score: 3, label: "Strong" };
+  return { score: 4, label: "Very strong" };
+}
+
+function updatePasswordStrength() {
+  updateStrengthDisplay(
+    elements.passwordStrength,
+    elements.passwordStrengthMeter,
+    elements.passwordStrengthLabel,
+    elements.itemPassword.value
+  );
+}
+
+function updateStrengthDisplay(container, meter, label, password) {
+  const strength = estimatePasswordStrength(password);
+  container.dataset.score = String(strength.score);
+  meter.setAttribute("aria-valuenow", String(strength.score));
+  meter.setAttribute("aria-valuetext", strength.label);
+  label.textContent = strength.label;
+}
+
+function updateNewMasterPasswordStrength() {
+  updateStrengthDisplay(
+    elements.newMasterPasswordStrength,
+    elements.newMasterPasswordStrengthMeter,
+    elements.newMasterPasswordStrengthLabel,
+    elements.newMasterPassword.value
+  );
+}
+
+function setSecretVisibility(input, toggle, visible) {
+  input.type = visible ? "text" : "password";
+  setButtonIcon(toggle, visible ? "eye_off" : "eye");
+  setButtonLabel(toggle, visible ? "Hide" : "Show");
+  const fieldName = toggle.dataset.secretLabel
+    || document.querySelector(`label[for="${CSS.escape(input.id)}"]`)?.textContent.trim().toLocaleLowerCase()
+    || "secret";
+  toggle.setAttribute("aria-label", `${visible ? "Hide" : "Show"} ${fieldName}`);
+  toggle.setAttribute("aria-pressed", String(visible));
+}
+
+function toggleSecretVisibility(input, toggle) {
+  setSecretVisibility(input, toggle, input.type === "password");
+}
+
+function remaskSecret(input, toggle) {
+  setSecretVisibility(input, toggle, false);
+}
+
+function remaskNewMasterPassword() {
+  remaskSecret(elements.newMasterPassword, elements.toggleNewMasterPassword);
+  remaskSecret(elements.newMasterPasswordConfirm, elements.toggleNewMasterPasswordConfirm);
+}
+
+function clearSettingsSecrets() {
+  elements.oldMasterPassword.value = "";
+  elements.newMasterPassword.value = "";
+  elements.newMasterPasswordConfirm.value = "";
+  elements.recoveryMasterPassword.value = "";
+  remaskSecret(elements.oldMasterPassword, elements.toggleOldMasterPassword);
+  remaskNewMasterPassword();
+  remaskSecret(elements.recoveryMasterPassword, elements.toggleRecoveryMasterPassword);
+  updateNewMasterPasswordStrength();
+}
+
+function remaskBackupPassphrases() {
+  remaskSecret(elements.backupPassphrase, elements.toggleBackupPassphrase);
+  remaskSecret(elements.restorePassphrase, elements.toggleRestorePassphrase);
 }
 
 function setItemIcon(dataUrl, { dirty = false } = {}) {
@@ -927,7 +1123,7 @@ async function uploadItemIcon() {
   const dataUrl = await busy(elements.uploadItemIcon, () => vaultApi.selectItemIcon());
   if (!dataUrl) return;
   setItemIcon(dataUrl, { dirty: true });
-  toast("Qi icon added to the editor. Save Qi to encrypt it in the vault.");
+  toast("Qi icon added to the editor. Save Qi to encrypt it in the Ring.");
 }
 
 async function fetchItemFavicon() {
@@ -935,7 +1131,7 @@ async function fetchItemFavicon() {
   if (!url) throw new Error("Enter the website URL before importing its favicon.");
   const dataUrl = await busy(elements.fetchItemFavicon, () => vaultApi.fetchFavicon(url));
   setItemIcon(dataUrl, { dirty: true });
-  toast("Website favicon added to the editor. Save Qi to encrypt it in the vault.");
+  toast("Website favicon added to the editor. Save Qi to encrypt it in the Ring.");
 }
 
 function collectQuestions() {
@@ -945,6 +1141,66 @@ function collectQuestions() {
       answer: row.querySelector(".answer-input").value
     }))
     .filter((entry) => entry.question || entry.answer);
+}
+
+function collectCustomFields() {
+  return [...elements.customFieldList.querySelectorAll(".custom-field-row")].map((row) => ({
+    label: row.querySelector(".custom-field-label").value.trim(),
+    value: row.querySelector(".custom-field-value").value,
+    concealed: row.querySelector(".custom-field-secret input").checked
+  }));
+}
+
+function updateCustomFieldLimit() {
+  elements.addCustomField.disabled = elements.customFieldList.children.length >= 50;
+}
+
+function addCustomFieldRow(field = { label: "", value: "", concealed: false }) {
+  if (elements.customFieldList.children.length >= 50) {
+    throw new Error("A Qi may contain at most 50 custom fields.");
+  }
+  const sequence = crypto.randomUUID();
+  const row = createElement("div", { className: "custom-field-row" });
+  const labelField = createElement("div", { className: "field custom-field-label-wrap" });
+  const labelId = `customFieldLabel-${sequence}`;
+  const labelLabel = createElement("label", { text: "Label", attributes: { for: labelId } });
+  const labelInput = createElement("input", {
+    className: "custom-field-label",
+    attributes: { id: labelId, maxlength: "256", placeholder: "Membership number", required: "" }
+  });
+  labelInput.value = field.label || "";
+  labelField.append(labelLabel, labelInput);
+
+  const valueField = createElement("div", { className: "field custom-field-value-wrap" });
+  const valueId = `customFieldValue-${sequence}`;
+  const valueLabel = createElement("label", { text: "Value", attributes: { for: valueId } });
+  const valueInput = createElement("input", {
+    className: "custom-field-value",
+    type: field.concealed ? "password" : "text",
+    attributes: { id: valueId, maxlength: "4096", autocomplete: "off" }
+  });
+  valueInput.value = field.value || "";
+  valueField.append(valueLabel, valueInput);
+
+  const secretLabel = createElement("label", { className: "check-row custom-field-secret" });
+  const secretInput = createElement("input", { type: "checkbox", attributes: { "aria-label": "Keep value secret" } });
+  secretInput.checked = Boolean(field.concealed);
+  secretInput.addEventListener("change", () => {
+    valueInput.type = secretInput.checked ? "password" : "text";
+  });
+  secretLabel.append(secretInput, createElement("span", { text: "Secret" }));
+
+  const copyButton = createElement("button", { className: "secondary custom-field-copy", text: "Copy", type: "button", icon: "copy" });
+  copyButton.addEventListener("click", runSafely(() => copySecret(valueInput.value, labelInput.value.trim() || "Custom field")));
+  const removeButton = createElement("button", { className: "danger custom-field-remove", text: "Remove", type: "button", icon: "trash" });
+  removeButton.addEventListener("click", () => {
+    row.remove();
+    updateCustomFieldLimit();
+    markItemDirty();
+  });
+  row.append(labelField, valueField, secretLabel, copyButton, removeButton);
+  elements.customFieldList.append(row);
+  updateCustomFieldLimit();
 }
 
 function addQuestionRow(question = { question: "", answer: "" }) {
@@ -986,6 +1242,7 @@ function renderHistory(history) {
     const restore = createElement("button", { className: "secondary compact", text: "Restore", type: "button", icon: "undo" });
     restore.addEventListener("click", () => {
       elements.itemPassword.value = entry.password;
+      updatePasswordStrength();
       markItemDirty();
       toast("Historical password placed in the editor. Save Qi to apply it.");
     });
@@ -1007,6 +1264,7 @@ async function saveItem() {
     folder: elements.itemFolder.value.trim() || null,
     icon_data_url: state.itemIconDataUrl,
     security_questions: elements.itemType.value === "login" ? collectQuestions() : [],
+    custom_fields: collectCustomFields(),
     totp_secret: elements.itemType.value === "login" ? elements.itemTotpSecret.value.trim() || null : null
   };
   const id = await busy(elements.saveAction, async () => {
@@ -1021,6 +1279,7 @@ async function saveItem() {
         folder: input.folder,
         icon_data_url: input.icon_data_url,
         security_questions: input.security_questions,
+        custom_fields: input.custom_fields,
         totp_secret: input.totp_secret
       });
       return state.selectedItemId;
@@ -1030,7 +1289,7 @@ async function saveItem() {
   state.itemDirty = false;
   await refreshItems({ refreshCatalog: true });
   await selectItem(id, { force: true });
-  toast("Qi saved to the encrypted vault.");
+  toast("Qi saved to the encrypted Ring.");
   return true;
 }
 
@@ -1039,7 +1298,7 @@ async function deleteItem() {
   const title = elements.itemTitle.value.trim() || "this Qi";
   if (!await askConfirmation({
     title: "Delete Qi?",
-    message: `Delete “${title}” from the vault? You can undo this deletion from the notification.`,
+    message: `Delete “${title}” from the Ring? You can undo this deletion from the notification.`,
     confirmLabel: "Delete Qi"
   })) return;
   await busy(elements.deleteAction, () => vaultApi.deleteItem(state.selectedItemId));
@@ -1062,6 +1321,11 @@ function remaskPassword() {
   setButtonLabel(elements.togglePassword, "Show");
   elements.togglePassword.setAttribute("aria-pressed", "false");
   elements.itemTotpSecret.type = "password";
+  for (const row of elements.customFieldList.querySelectorAll(".custom-field-row")) {
+    if (row.querySelector(".custom-field-secret input").checked) {
+      row.querySelector(".custom-field-value").type = "password";
+    }
+  }
 }
 
 function togglePasswordVisibility() {
@@ -1097,6 +1361,7 @@ async function generateFromSelectedProfile() {
   if (!profile) throw new Error("Select a password profile first.");
   const result = await vaultApi.generatePassword(profile.policy);
   elements.itemPassword.value = result.value;
+  updatePasswordStrength();
   markItemDirty();
   toast(`Generated a ${profile.policy.length}-character password from “${profile.name}”.`);
 }
@@ -1123,6 +1388,7 @@ function updateTotpCountdown() {
 }
 
 function renderProfiles() {
+  const previousGenerationProfile = elements.profileSelect.value;
   elements.profileList.replaceChildren();
   elements.profileSelect.replaceChildren();
   elements.profileCount.textContent = String(state.profiles.length);
@@ -1139,6 +1405,10 @@ function renderProfiles() {
     button.addEventListener("click", runSafely(() => selectProfile(profile.id)));
     elements.profileList.append(button);
   }
+  const generationProfile = state.profiles.find((profile) => profile.id === previousGenerationProfile)
+    || state.profiles.find((profile) => profile.name === "Strong 20")
+    || state.profiles[0];
+  if (generationProfile) elements.profileSelect.value = generationProfile.id;
   if (state.profiles.length === 0) {
     elements.profileList.append(createElement("p", { className: "empty-message", text: "No profiles available." }));
   }
@@ -1258,7 +1528,7 @@ async function saveProfile() {
   state.profileDirty = false;
   await selectProfile(id, { force: true });
   renderProfiles();
-  toast("Password profile saved inside the encrypted vault.");
+  toast("Password profile saved inside the encrypted Ring.");
   return true;
 }
 
@@ -1441,9 +1711,10 @@ async function saveSettings() {
   state.settings = normalizedSettings(settings);
   state.settingsDirty = false;
   applyTheme(settings.theme);
+  persistThemePreference(settings.theme);
   applyButtonDisplay(settings.button_display);
   updateContextActionState();
-  toast("Encrypted vault settings saved and enforced.");
+  toast("Encrypted Ring settings saved and enforced.");
   return true;
 }
 
@@ -1457,15 +1728,21 @@ async function chooseBackupDirectory() {
 async function rotateMasterPassword() {
   const oldPassword = elements.oldMasterPassword.value;
   const newPassword = elements.newMasterPassword.value;
-  if (!oldPassword || !newPassword) throw new Error("Enter both the current and new master passwords.");
+  const confirmation = elements.newMasterPasswordConfirm.value;
+  if (!oldPassword || !newPassword || !confirmation) {
+    throw new Error("Enter the current password, the new password, and its confirmation.");
+  }
+  if (newPassword !== confirmation) throw new Error("New master password confirmation does not match.");
+  if (!elements.oldMasterPassword.checkValidity() || !elements.newMasterPassword.checkValidity()) {
+    throw new Error("Master passwords must contain at least 12 characters.");
+  }
   if (!await askConfirmation({
     title: "Rotate master password?",
-    message: "Rotate the master password now? The old password will stop unlocking this vault.",
+    message: "Rotate the master password now? The old password will stop unlocking this Ring.",
     confirmLabel: "Rotate password"
   })) return;
   await busy(elements.rotateMaster, () => vaultApi.rotateMaster(oldPassword, newPassword));
-  elements.oldMasterPassword.value = "";
-  elements.newMasterPassword.value = "";
+  clearSettingsSecrets();
   toast("Master password rotated. Recovery access remains valid.");
 }
 
@@ -1477,9 +1754,26 @@ async function regenerateRecovery() {
     message: "Replace the recovery key? The current recovery key will stop working immediately.",
     confirmLabel: "Replace key"
   })) return;
-  const material = await busy(elements.regenerateRecovery, () => vaultApi.regenerateRecovery(password));
+  elements.recoveryKeyStatus.removeAttribute("data-state");
+  elements.recoveryKeyStatus.textContent = "Replacing the recovery key and saving it to the encrypted Ring…";
+  let material;
+  try {
+    material = await busy(elements.regenerateRecovery, () => vaultApi.regenerateRecovery(password));
+  } catch (error) {
+    elements.recoveryKeyStatus.textContent = "The recovery key was not replaced. Save settings is unrelated to recovery-key changes.";
+    throw error;
+  }
   elements.recoveryMasterPassword.value = "";
-  showRecoveryCeremony(material, async () => toast("Recovery key replaced."));
+  remaskSecret(elements.recoveryMasterPassword, elements.toggleRecoveryMasterPassword);
+  elements.recoveryKeyStatus.dataset.state = "saved";
+  elements.recoveryKeyStatus.textContent = "Recovery key replaced and saved. Complete the storage check for your new key.";
+  showRecoveryCeremony(material, async () => {
+    elements.recoveryKeyStatus.dataset.state = "saved";
+    elements.recoveryKeyStatus.textContent = state.settingsDirty
+      ? "Recovery key replaced and saved. Use Save settings only for your other unsaved settings changes."
+      : "Recovery key replaced and saved. No settings save is required.";
+    toast("Recovery key replaced and saved.");
+  });
 }
 
 async function exportBackup() {
@@ -1488,6 +1782,7 @@ async function exportBackup() {
   const manifest = await busy(elements.exportBackup, () => vaultApi.exportBackup(passphrase));
   if (!manifest) return;
   elements.backupPassphrase.value = "";
+  remaskSecret(elements.backupPassphrase, elements.toggleBackupPassphrase);
   toast(`Encrypted backup exported (${formatBytes(manifest.size_bytes)}).`);
 }
 
@@ -1506,8 +1801,8 @@ async function previewBackup() {
   const passphrase = elements.restorePassphrase.value;
   const preview = await busy(elements.previewBackup, () => vaultApi.previewBackup(state.selectedBackupToken, passphrase));
   elements.backupPreview.replaceChildren(
-    createElement("div", { text: `Vault: ${preview.vault_id}` }),
-    createElement("div", { text: `Vault created: ${formatDate(preview.vault_created_at)}` }),
+    createElement("div", { text: `Ring: ${preview.vault_id}` }),
+    createElement("div", { text: `Ring created: ${formatDate(preview.vault_created_at)}` }),
     createElement("div", { text: `Backup created: ${formatDate(preview.backup_created_at)}` }),
     createElement("div", { text: `Schema: v${preview.vault_schema_version} · ${formatBytes(preview.size_bytes)}` })
   );
@@ -1520,7 +1815,7 @@ async function restoreBackup() {
   if (!state.selectedBackupToken || !state.backupPreviewed) throw new Error("Preview the backup before restoring it.");
   if (!await askConfirmation({
     title: "Restore previewed backup?",
-    message: "Replace the current vault with the previewed backup? QiRing will lock immediately after the atomic restore.",
+    message: "Replace the current Ring with the previewed backup? QiRing will lock immediately after the atomic restore.",
     confirmLabel: "Restore backup"
   })) return;
   const report = await busy(elements.restoreBackup, () => vaultApi.importBackup(state.selectedBackupToken, elements.restorePassphrase.value));
@@ -1543,7 +1838,7 @@ async function refreshSnapshots() {
       try {
         if (!await askConfirmation({
           title: "Restore snapshot?",
-          message: `Restore “${snapshot.path}” and replace the current vault? QiRing will lock.`,
+          message: `Restore “${snapshot.path}” and replace the current Ring? QiRing will lock.`,
           confirmLabel: "Restore snapshot"
         })) return;
         await vaultApi.restoreSnapshot(snapshot.path);
@@ -1587,9 +1882,14 @@ function resetSessionUi() {
   remaskPassword();
   elements.itemList.replaceChildren();
   elements.profileList.replaceChildren();
+  elements.profileSelect.replaceChildren();
   elements.itemForm.reset();
   setItemIcon(null);
   elements.profileForm.reset();
+  clearSettingsSecrets();
+  elements.backupPassphrase.value = "";
+  elements.restorePassphrase.value = "";
+  remaskBackupPassphrases();
 }
 
 async function lockVault({ force = false } = {}) {
@@ -1643,7 +1943,7 @@ elements.createForm.addEventListener("submit", runSafely(async () => {
   elements.createForm.reset();
   showRecoveryCeremony(result.recovery, async () => {
     setAuthScreen("unlock");
-    toast("Vault initialized. Unlock it with your master password.");
+    toast("Ring initialized. Unlock it with your master password.");
   });
 }, true));
 
@@ -1656,7 +1956,7 @@ elements.masterUnlockPanel.addEventListener("submit", runSafely(async () => {
     return unlocked;
   });
   if (result.migrated_recovery) {
-    showRecoveryCeremony(result.migrated_recovery, async () => toast("Legacy vault migrated to authenticated schema v2."));
+    showRecoveryCeremony(result.migrated_recovery, async () => toast("Legacy Ring migrated to authenticated schema v2."));
   }
 }, true));
 
@@ -1669,7 +1969,7 @@ elements.recoveryUnlockPanel.addEventListener("submit", runSafely(async () => {
     await enterVault();
     return recovered;
   });
-  showRecoveryCeremony(result.recovery, async () => toast("Vault recovered. Master and recovery credentials were rotated."));
+  showRecoveryCeremony(result.recovery, async () => toast("Ring recovered. Master and recovery credentials were rotated."));
 }, true));
 
 elements.masterTab.addEventListener("click", () => setUnlockTab("master"));
@@ -1706,7 +2006,8 @@ elements.confirmationDialog.addEventListener("cancel", (event) => {
 });
 elements.copyRecoveryKey.addEventListener("click", runSafely(() => copySecret(elements.recoveryKeyOutput.textContent, "Recovery key")));
 elements.saveRecoveryKey.addEventListener("click", runSafely(saveRecoveryKey));
-elements.printRecoveryKey.addEventListener("click", () => window.print());
+elements.printRecoveryKey.addEventListener("click", runSafely(printRecoveryKey));
+elements.toggleRecoveryQr.addEventListener("click", runSafely(toggleRecoveryQr));
 
 elements.menuButton.addEventListener("click", () => elements.appMenu.hidden ? openMenu() : closeMenu({ restoreFocus: true }));
 elements.appMenu.addEventListener("keydown", (event) => {
@@ -1731,6 +2032,12 @@ elements.deleteAction.addEventListener("click", runSafely(() => handleContextAct
 elements.itemForm.addEventListener("input", markItemDirty);
 elements.itemForm.addEventListener("change", markItemDirty);
 elements.itemType.addEventListener("change", updateItemTypeFields);
+elements.itemPassword.addEventListener("input", updatePasswordStrength);
+elements.addCustomField.addEventListener("click", runSafely(() => {
+  addCustomFieldRow();
+  markItemDirty();
+  elements.customFieldList.lastElementChild?.querySelector(".custom-field-label")?.focus();
+}));
 elements.addQuestion.addEventListener("click", () => {
   addQuestionRow();
   markItemDirty();
@@ -1761,14 +2068,21 @@ elements.profileForm.addEventListener("change", markProfileDirty);
 elements.testProfile.addEventListener("click", runSafely(testProfile));
 
 elements.runHealth.addEventListener("click", runSafely(runHealthAnalysis));
-elements.settingsForm.addEventListener("input", markSettingsDirty);
-elements.settingsForm.addEventListener("change", markSettingsDirty);
+elements.settingsForm.addEventListener("input", markSettingsDirtyFromControl);
+elements.settingsForm.addEventListener("change", markSettingsDirtyFromControl);
 elements.chooseBackupDirectory.addEventListener("click", runSafely(chooseBackupDirectory));
 elements.rotateMaster.addEventListener("click", runSafely(rotateMasterPassword));
 elements.regenerateRecovery.addEventListener("click", runSafely(regenerateRecovery));
+elements.newMasterPassword.addEventListener("input", updateNewMasterPasswordStrength);
+elements.toggleOldMasterPassword.addEventListener("click", () => toggleSecretVisibility(elements.oldMasterPassword, elements.toggleOldMasterPassword));
+elements.toggleNewMasterPassword.addEventListener("click", () => toggleSecretVisibility(elements.newMasterPassword, elements.toggleNewMasterPassword));
+elements.toggleNewMasterPasswordConfirm.addEventListener("click", () => toggleSecretVisibility(elements.newMasterPasswordConfirm, elements.toggleNewMasterPasswordConfirm));
+elements.toggleRecoveryMasterPassword.addEventListener("click", () => toggleSecretVisibility(elements.recoveryMasterPassword, elements.toggleRecoveryMasterPassword));
 elements.themeSelect.addEventListener("change", () => applyTheme(elements.themeSelect.value));
 elements.buttonDisplaySelect.addEventListener("change", () => applyButtonDisplay(elements.buttonDisplaySelect.value));
 elements.backupPassphrase.addEventListener("input", updateContextActionState);
+elements.toggleBackupPassphrase.addEventListener("click", () => toggleSecretVisibility(elements.backupPassphrase, elements.toggleBackupPassphrase));
+elements.toggleRestorePassphrase.addEventListener("click", () => toggleSecretVisibility(elements.restorePassphrase, elements.toggleRestorePassphrase));
 
 elements.exportBackup.addEventListener("click", runSafely(exportBackup));
 elements.selectBackup.addEventListener("click", runSafely(selectBackup));

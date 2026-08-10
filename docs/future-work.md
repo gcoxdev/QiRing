@@ -7,11 +7,11 @@ Items already implemented since the 2026-08-08 assessment (Settings screen, secu
 ## Near-term, fits current local-only scope
 
 1. **Import from other password managers.** CSV/JSON import from 1Password, Bitwarden, Chrome/Firefox exports, etc. Likely the single biggest adoption blocker — there is currently no on-ramp for someone with an existing vault elsewhere. Should reuse the existing bounded/previewed import pipeline built for QiRing's own backups.
-2. **Password strength meter at entry time.** A live nudge while typing a new password, distinct from the existing after-the-fact Health report — surface weakness before the user commits to it, not only when they later run an analysis.
+2. **Password strength meter at entry time — Implemented.** The Qi editor now rates passwords live from weak through very strong using length and character variety, while keeping the existing after-the-fact Health report as a separate audit.
 3. **Duplicate-URL / duplicate-username detection.** Extend the Health report to catch accidental double-entry of the same login, not just reused passwords.
-4. **Per-item custom fields.** Beyond username/password/URL/notes/questions — PINs, security codes, membership numbers. A common gap in fixed-schema vaults.
+4. **Per-item custom fields — Implemented.** Qi entries now support up to 50 labeled values for PINs, security codes, membership numbers, and similar data; values can be concealed, are encrypted with the item, and participate in Ring search.
 5. **Vault-wide search filters by field state.** E.g. "items with no password set," "items last modified > 1 year ago," building on the existing health-report infrastructure.
-6. **Recovery-key QR code.** The recovery ceremony already supports copy/save/print; add a QR-code option specifically for the recovery key so it can be scanned onto paper or another device without transcription errors.
+6. **Recovery-key QR code — Implemented.** The recovery ceremony can now render the key as an opt-in, locally generated QR code for scanning or printing, and clears the QR canvas when it is hidden or the ceremony ends.
 7. **Portable single-file encrypted export**, distinct from the existing backup format, aimed at manual archival/migration rather than QiRing-to-QiRing restore.
 
 ## Later, after further design work (still local-only)

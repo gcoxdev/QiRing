@@ -29,6 +29,10 @@ zeroize.workspace = true
 qiring-core = { path = "../../../crates/qiring-core" }
 qiring-storage = { path = "../../../crates/qiring-storage" }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18.2"
+webkit2gtk = "2.0.2"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
