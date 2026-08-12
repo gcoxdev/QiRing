@@ -9,34 +9,247 @@ QiRing is a security-first, local-only desktop password manager.
 - `crates/qiring-storage`: encrypted vault file persistence
 - `crates/qiring-core`: domain logic, session state, CRUD, backup operations
 
-## Quick start
+## Development and builds
+
+QiRing uses Rust 1.93.1, Node.js, npm, Vite, and Tauri 2. Node.js 24 LTS is used by CI and is the recommended version for reproducible builds. The repository's `rust-toolchain.toml` makes `rustup` select the required Rust toolchain automatically.
+
+Install [Rust with rustup](https://www.rust-lang.org/tools/install), [Node.js 24 LTS](https://nodejs.org/), and the [Tauri system prerequisites](https://v2.tauri.app/start/prerequisites/) for the host operating system. Then install the locked frontend dependencies from the repository root:
 
 ```bash
-cargo test -p qiring-crypto -p qiring-storage -p qiring-core
+cd apps/desktop
+npm ci
+cd ../..
 ```
 
-## Run desktop app
+The configured native distribution targets are:
 
-Use the launcher script from the repository root:
+| Host operating system | Bundle targets | Output |
+| --- | --- | --- |
+| Linux | AppImage and DEB | `target/release/bundle/appimage/*.AppImage`, `target/release/bundle/deb/*.deb` |
+| macOS | DMG and the enclosed application bundle | `target/release/bundle/dmg/*.dmg`, `target/release/bundle/macos/QiRing.app` |
+| Windows | MSI | `target/release/bundle/msi/*.msi` |
+
+Native installers must be built on their corresponding operating system: MSI on Windows, DMG on macOS, and AppImage/DEB on Linux. The current project is not configured for Android, iOS, RPM, Flatpak, Snap, AUR, NSIS, or app-store packages.
+
+### Validate the workspace
+
+Run the core test suite:
+
+```bash
+cargo test --workspace
+```
+
+The principal CI checks can be run locally with:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+
+cd apps/desktop
+npm audit --audit-level=moderate
+npm run build
+npm run test:ui-contract
+npx playwright install chromium
+npm run test:e2e
+```
+
+### Run a development build
+
+On any supported desktop host, start Tauri with Vite hot reload:
+
+```bash
+cd apps/desktop
+npm run tauri -- dev
+```
+
+Linux also has a repository launcher that runs the Rust desktop application with safe defaults for known WebKitGTK/GBM rendering issues:
 
 ```bash
 ./scripts/run-desktop.sh
 ```
 
-On Linux, the launcher sets safe defaults for known WebKitGTK/GBM rendering issues:
-
-- `WEBKIT_DISABLE_DMABUF_RENDERER=1`
-- `LIBGL_ALWAYS_SOFTWARE=1`
-
-When X11 is requested and `DISPLAY` is not set, the launcher probes `:0`, `:1`, `:2` and picks the first working X display. In automatic mode it probes only when neither a Wayland nor X display is already available.
-
-The default `auto` backend respects the current Linux desktop session. Wayland restores the saved size and maximized state, but the compositor controls absolute placement. To restore the exact saved position, launch through X11/XWayland:
+The Linux launcher sets `WEBKIT_DISABLE_DMABUF_RENDERER=1`, `WEBKIT_DISABLE_COMPOSITING_MODE=1`, and `LIBGL_ALWAYS_SOFTWARE=1`. Its default `auto` backend respects the current desktop session. Wayland restores the saved size and maximized state, but the compositor controls absolute placement. To restore the exact saved position, launch through X11/XWayland:
 
 ```bash
 ./scripts/run-desktop.sh --x11
 ```
 
-Use `--wayland` to explicitly select Wayland, or set `QIRING_WINDOW_BACKEND=auto|x11|wayland`. The backend flags are consumed by the launcher and are not passed to Cargo.
+Use `--wayland` to explicitly select Wayland, or set `QIRING_WINDOW_BACKEND=auto|x11|wayland`. When X11 is requested and `DISPLAY` is unset, the launcher probes `:0`, `:1`, and `:2`. The backend flags are consumed by the launcher and are not passed to Cargo.
+
+### Build the frontend only
+
+```bash
+cd apps/desktop
+npm run build
+```
+
+The static output is written to `apps/desktop/web-dist`. It is intended to be embedded in the Tauri application and is not a standalone browser version of QiRing.
+
+### Build the Rust workspace only
+
+```bash
+cargo build --workspace --release
+```
+
+This compiles the Rust crates and desktop backend without creating a platform installer.
+
+### Build an unbundled desktop executable
+
+From `apps/desktop`, build a release executable without an installer:
+
+```bash
+npm run tauri -- build --no-bundle
+```
+
+The executable is written to `target/release/qiring-desktop` on Linux/macOS or `target/release/qiring-desktop.exe` on Windows. For a debug executable, use:
+
+```bash
+npm run tauri -- build --debug --no-bundle
+```
+
+Debug output is written under `target/debug`.
+
+### Build Linux bundles
+
+Install the native prerequisites before building. On Arch Linux or Manjaro:
+
+```bash
+sudo pacman -Syu
+sudo pacman -S --needed \
+  webkit2gtk-4.1 \
+  base-devel \
+  curl \
+  wget \
+  file \
+  openssl \
+  appmenu-gtk-module \
+  libappindicator \
+  librsvg \
+  xdotool \
+  patchelf \
+  fuse2
+```
+
+`fuse2` is needed to run AppImages. On Debian or Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install \
+  libwebkit2gtk-4.1-dev \
+  build-essential \
+  curl \
+  wget \
+  file \
+  libxdo-dev \
+  libssl-dev \
+  libayatana-appindicator3-dev \
+  librsvg2-dev \
+  patchelf
+```
+
+Build both configured Linux formats:
+
+```bash
+cd apps/desktop
+npm run tauri -- build --bundles appimage,deb
+```
+
+Build just one format when desired:
+
+```bash
+npm run tauri -- build --bundles appimage
+npm run tauri -- build --bundles deb
+```
+
+An AppImage can run directly after making it executable:
+
+```bash
+chmod +x ../../target/release/bundle/appimage/*.AppImage
+../../target/release/bundle/appimage/*.AppImage
+```
+
+Install a DEB on Debian or Ubuntu with:
+
+```bash
+sudo apt install ../../target/release/bundle/deb/*.deb
+```
+
+AppImage is the recommended output for Manjaro and other non-Debian distributions.
+
+### Build macOS bundles
+
+Install Apple's command-line development tools first:
+
+```bash
+xcode-select --install
+```
+
+Then build the configured DMG on a Mac:
+
+```bash
+cd apps/desktop
+npm run tauri -- build --bundles dmg
+```
+
+Open the resulting DMG and drag QiRing into Applications:
+
+```bash
+open ../../target/release/bundle/dmg/*.dmg
+```
+
+The default build uses the Mac's native architecture. To create a universal Intel/Apple Silicon DMG, install both Rust targets and select Tauri's universal target:
+
+```bash
+rustup target add x86_64-apple-darwin aarch64-apple-darwin
+
+cd apps/desktop
+npm run tauri -- build --target universal-apple-darwin --bundles dmg
+```
+
+Universal artifacts are written below `target/universal-apple-darwin/release/bundle`.
+
+### Build Windows bundles
+
+Install the following on Windows before building:
+
+- Microsoft C++ Build Tools with **Desktop development with C++** selected
+- Microsoft Edge WebView2 Runtime; it is normally already installed on current Windows 10 and Windows 11 systems
+- Node.js 24 LTS and npm
+- Rustup using the MSVC host toolchain
+
+If Rust was previously configured with a GNU host, select MSVC in PowerShell:
+
+```powershell
+rustup default stable-msvc
+```
+
+MSI creation also requires the Windows VBSCRIPT optional feature. It is normally enabled by default; if WiX reports that it cannot run `light.exe`, enable VBSCRIPT under **Settings > Apps > Optional features > More Windows features**.
+
+Build the MSI from PowerShell or Command Prompt on Windows:
+
+```powershell
+cd apps/desktop
+npm run tauri -- build --bundles msi
+```
+
+The resulting MSI can be opened normally or installed from PowerShell:
+
+```powershell
+$installer = Get-ChildItem ..\..\target\release\bundle\msi\*.msi | Select-Object -First 1
+Start-Process msiexec.exe -Wait -ArgumentList '/i', $installer.FullName
+```
+
+### Build all bundles configured for the current host
+
+The following is the command used by the release workflow. Tauri selects the bundle formats that apply to the current operating system from `apps/desktop/src-tauri/tauri.conf.json`:
+
+```bash
+cd apps/desktop
+npm run tauri -- build
+```
+
+Local bundles are unsigned unless platform signing credentials are configured. Public tagged releases must be signed; macOS releases must also be notarized. See [the release process](docs/release-process.md) for signing variables, checksums, SBOM generation, provenance attestations, and the GitHub Actions release flow.
 
 ## Current UI flow
 
