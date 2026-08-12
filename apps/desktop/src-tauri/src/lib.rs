@@ -549,7 +549,7 @@ fn copy_secret(app: AppHandle, state: State<'_, AppState>, value: String) -> Res
 
 pub fn run() {
     apply_platform_runtime_defaults();
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -634,8 +634,18 @@ pub fn run() {
             vault_exists,
             copy_secret,
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run QiRing desktop app");
+        .build(tauri::generate_context!())
+        .expect("failed to build QiRing desktop app");
+
+    app.run(|app_handle, event| {
+        if matches!(
+            event,
+            tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+        ) {
+            let state = app_handle.state::<AppState>();
+            clear_owned_clipboard(app_handle, &state);
+        }
+    });
 }
 
 fn recovery_print_basename(title: &str) -> Option<&str> {
@@ -688,6 +698,7 @@ fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
         WindowEvent::CloseRequested { .. } => {
             capture_window_bounds(window, &state.window_bounds);
             persist_window_bounds(&state.window_bounds);
+            clear_owned_clipboard(window.app_handle(), &state);
         }
         _ => {}
     }
@@ -1103,15 +1114,13 @@ fn clear_owned_clipboard(app: &AppHandle, state: &AppState) {
 
 fn clear_owned_clipboard_from_guard(app: &AppHandle, guard: &ClipboardGuard) {
     if let Ok(mut owned) = guard.owned.lock() {
-        let should_clear = owned
-            .value
-            .as_ref()
-            .is_some_and(|owned| app.clipboard().read_text().ok().as_deref() == Some(owned.as_str()));
+        let Ok(clipboard_value) = app.clipboard().read_text() else {
+            return;
+        };
+        let should_clear = forget_owned_clipboard(&mut owned, &clipboard_value);
         if should_clear {
             let _ = app.clipboard().clear();
         }
-        owned.value = None;
-        owned.expires_at = None;
     }
 }
 
@@ -1120,16 +1129,24 @@ fn clear_expired_clipboard_from_guard(app: &AppHandle, guard: &ClipboardGuard) {
         if owned.expires_at.is_none_or(|expiry| Instant::now() < expiry) {
             return;
         }
-        let should_clear = owned
-            .value
-            .as_ref()
-            .is_some_and(|value| app.clipboard().read_text().ok().as_deref() == Some(value.as_str()));
+        let Ok(clipboard_value) = app.clipboard().read_text() else {
+            return;
+        };
+        let should_clear = forget_owned_clipboard(&mut owned, &clipboard_value);
         if should_clear {
             let _ = app.clipboard().clear();
         }
-        owned.value = None;
-        owned.expires_at = None;
     }
+}
+
+fn forget_owned_clipboard(owned: &mut OwnedClipboard, clipboard_value: &str) -> bool {
+    let should_clear = owned
+        .value
+        .as_ref()
+        .is_some_and(|value| clipboard_value == value.as_str());
+    owned.value = None;
+    owned.expires_at = None;
+    should_clear
 }
 
 fn clear_ephemeral_authorizations(state: &AppState) {
@@ -1329,5 +1346,24 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn clipboard_cleanup_clears_only_an_unchanged_owned_value() {
+        let mut matching = OwnedClipboard {
+            value: Some(Zeroizing::new("copied secret".to_string())),
+            expires_at: Instant::now().checked_add(Duration::from_secs(30)),
+        };
+        assert!(forget_owned_clipboard(&mut matching, "copied secret"));
+        assert!(matching.value.is_none());
+        assert!(matching.expires_at.is_none());
+
+        let mut replaced = OwnedClipboard {
+            value: Some(Zeroizing::new("copied secret".to_string())),
+            expires_at: Instant::now().checked_add(Duration::from_secs(30)),
+        };
+        assert!(!forget_owned_clipboard(&mut replaced, "newer clipboard content"));
+        assert!(replaced.value.is_none());
+        assert!(replaced.expires_at.is_none());
     }
 }
