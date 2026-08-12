@@ -16,7 +16,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WindowEvent};
-use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -71,9 +70,24 @@ struct WindowBoundsState {
     changed_at: Option<Instant>,
 }
 
-#[derive(Default)]
 struct ClipboardGuard {
-    owned: Mutex<OwnedClipboard>,
+    state: Mutex<ClipboardState>,
+}
+
+struct ClipboardState {
+    backend: Option<arboard::Clipboard>,
+    owned: OwnedClipboard,
+}
+
+impl Default for ClipboardGuard {
+    fn default() -> Self {
+        Self {
+            state: Mutex::new(ClipboardState {
+                backend: arboard::Clipboard::new().ok(),
+                owned: OwnedClipboard::default(),
+            }),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -213,9 +227,9 @@ fn prepare_recovery_print(state: State<'_, AppState>, basename: String) -> Resul
 }
 
 #[tauri::command]
-fn lock_vault(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+fn lock_vault(state: State<'_, AppState>) -> Result<(), String> {
     lock_service(&state)?.lock_vault();
-    clear_owned_clipboard(&app, &state);
+    clear_owned_clipboard(&state);
     clear_ephemeral_authorizations(&state);
     Ok(())
 }
@@ -524,7 +538,7 @@ fn vault_exists(state: State<'_, AppState>) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn copy_secret(app: AppHandle, state: State<'_, AppState>, value: String) -> Result<u32, String> {
+fn copy_secret(state: State<'_, AppState>, value: String) -> Result<u32, String> {
     let value = Zeroizing::new(value);
     if value.is_empty() || value.len() > 100_000 {
         return Err("Clipboard value is empty or too large.".into());
@@ -533,17 +547,19 @@ fn copy_secret(app: AppHandle, state: State<'_, AppState>, value: String) -> Res
         .get_security_status()
         .map_err(display_error)?
         .clipboard_clear_seconds;
-    app.clipboard()
-        .write_text(value.as_str())
-        .map_err(|error| format!("failed to write clipboard: {error}"))?;
-
-    let mut owned = state
+    let mut clipboard = state
         .clipboard
-        .owned
+        .state
         .lock()
         .map_err(|_| "clipboard state lock poisoned".to_string())?;
-    owned.value = Some(value);
-    owned.expires_at = Instant::now().checked_add(Duration::from_secs(u64::from(seconds)));
+    let backend = clipboard
+        .backend
+        .as_mut()
+        .ok_or_else(|| "the system clipboard is unavailable".to_string())?;
+    write_secret_to_clipboard(backend, value.as_str())
+        .map_err(|error| format!("failed to write clipboard: {error}"))?;
+    clipboard.owned.value = Some(value);
+    clipboard.owned.expires_at = Instant::now().checked_add(Duration::from_secs(u64::from(seconds)));
     Ok(seconds)
 }
 
@@ -552,7 +568,6 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let vault_path = resolve_vault_path(app)?;
             let window_state_path = app.path().app_config_dir()?.join("window-state.json");
@@ -582,14 +597,14 @@ pub fn run() {
 
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(1));
-                clear_expired_clipboard_from_guard(&app_handle, &background_state.clipboard);
+                clear_expired_clipboard_from_guard(&background_state.clipboard);
                 let locked = background_state
                     .service
                     .lock()
                     .map(|mut service| service.lock_if_idle())
                     .unwrap_or(true);
                 if locked {
-                    clear_owned_clipboard_from_guard(&app_handle, &background_state.clipboard);
+                    clear_owned_clipboard_from_guard(&background_state.clipboard);
                     clear_ephemeral_authorizations(&background_state);
                     let _ = app_handle.emit("vault-locked", "idle");
                 }
@@ -643,7 +658,7 @@ pub fn run() {
             tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
         ) {
             let state = app_handle.state::<AppState>();
-            clear_owned_clipboard(app_handle, &state);
+            clear_owned_clipboard_and_release(&state);
         }
     });
 }
@@ -698,7 +713,7 @@ fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
         WindowEvent::CloseRequested { .. } => {
             capture_window_bounds(window, &state.window_bounds);
             persist_window_bounds(&state.window_bounds);
-            clear_owned_clipboard(window.app_handle(), &state);
+            clear_owned_clipboard(&state);
         }
         _ => {}
     }
@@ -722,7 +737,7 @@ fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
         if let Ok(mut service) = state.service.lock() {
             service.lock_vault();
         }
-        clear_owned_clipboard(window.app_handle(), &state);
+        clear_owned_clipboard(&state);
         clear_ephemeral_authorizations(&state);
         let _ = window.app_handle().emit("vault-locked", "window");
     }
@@ -1108,45 +1123,87 @@ where
     .map_err(|error| format!("Ring operation task failed: {error}"))?
 }
 
-fn clear_owned_clipboard(app: &AppHandle, state: &AppState) {
-    clear_owned_clipboard_from_guard(app, &state.clipboard);
+#[cfg(target_os = "linux")]
+fn write_secret_to_clipboard(clipboard: &mut arboard::Clipboard, value: &str) -> Result<(), arboard::Error> {
+    use arboard::SetExtLinux;
+
+    clipboard.set().exclude_from_history().text(value)
 }
 
-fn clear_owned_clipboard_from_guard(app: &AppHandle, guard: &ClipboardGuard) {
-    if let Ok(mut owned) = guard.owned.lock() {
-        let Ok(clipboard_value) = app.clipboard().read_text() else {
-            return;
-        };
-        let should_clear = forget_owned_clipboard(&mut owned, &clipboard_value);
-        if should_clear {
-            let _ = app.clipboard().clear();
-        }
+#[cfg(target_os = "macos")]
+fn write_secret_to_clipboard(clipboard: &mut arboard::Clipboard, value: &str) -> Result<(), arboard::Error> {
+    use arboard::SetExtApple;
+
+    clipboard.set().exclude_from_history().text(value)
+}
+
+#[cfg(target_os = "windows")]
+fn write_secret_to_clipboard(clipboard: &mut arboard::Clipboard, value: &str) -> Result<(), arboard::Error> {
+    use arboard::SetExtWindows;
+
+    clipboard.set().exclude_from_monitoring().text(value)
+}
+
+fn clear_owned_clipboard(state: &AppState) {
+    clear_owned_clipboard_from_guard(&state.clipboard);
+}
+
+fn clear_owned_clipboard_and_release(state: &AppState) {
+    if let Ok(mut clipboard) = state.clipboard.state.lock() {
+        clear_owned_clipboard_state(&mut clipboard);
+        clipboard.backend.take();
+        forget_owned_clipboard(&mut clipboard.owned);
     }
 }
 
-fn clear_expired_clipboard_from_guard(app: &AppHandle, guard: &ClipboardGuard) {
-    if let Ok(mut owned) = guard.owned.lock() {
-        if owned.expires_at.is_none_or(|expiry| Instant::now() < expiry) {
-            return;
-        }
-        let Ok(clipboard_value) = app.clipboard().read_text() else {
-            return;
-        };
-        let should_clear = forget_owned_clipboard(&mut owned, &clipboard_value);
-        if should_clear {
-            let _ = app.clipboard().clear();
-        }
+fn clear_owned_clipboard_from_guard(guard: &ClipboardGuard) {
+    if let Ok(mut clipboard) = guard.state.lock() {
+        clear_owned_clipboard_state(&mut clipboard);
     }
 }
 
-fn forget_owned_clipboard(owned: &mut OwnedClipboard, clipboard_value: &str) -> bool {
-    let should_clear = owned
+fn clear_expired_clipboard_from_guard(guard: &ClipboardGuard) {
+    if let Ok(mut clipboard) = guard.state.lock() {
+        if clipboard
+            .owned
+            .expires_at
+            .is_none_or(|expiry| Instant::now() < expiry)
+        {
+            return;
+        }
+        clear_owned_clipboard_state(&mut clipboard);
+    }
+}
+
+fn clear_owned_clipboard_state(clipboard: &mut ClipboardState) {
+    if clipboard.owned.value.is_none() {
+        return;
+    }
+    let Some(backend) = clipboard.backend.as_mut() else {
+        return;
+    };
+    let Ok(clipboard_value) = backend.get_text() else {
+        return;
+    };
+    if !clipboard_matches_owned(&clipboard.owned, &clipboard_value) {
+        forget_owned_clipboard(&mut clipboard.owned);
+        return;
+    }
+    if backend.clear().is_ok() {
+        forget_owned_clipboard(&mut clipboard.owned);
+    }
+}
+
+fn clipboard_matches_owned(owned: &OwnedClipboard, clipboard_value: &str) -> bool {
+    owned
         .value
         .as_ref()
-        .is_some_and(|value| clipboard_value == value.as_str());
+        .is_some_and(|value| clipboard_value == value.as_str())
+}
+
+fn forget_owned_clipboard(owned: &mut OwnedClipboard) {
     owned.value = None;
     owned.expires_at = None;
-    should_clear
 }
 
 fn clear_ephemeral_authorizations(state: &AppState) {
@@ -1349,21 +1406,20 @@ mod tests {
     }
 
     #[test]
-    fn clipboard_cleanup_clears_only_an_unchanged_owned_value() {
+    fn clipboard_cleanup_matches_only_an_unchanged_owned_value() {
         let mut matching = OwnedClipboard {
             value: Some(Zeroizing::new("copied secret".to_string())),
             expires_at: Instant::now().checked_add(Duration::from_secs(30)),
         };
-        assert!(forget_owned_clipboard(&mut matching, "copied secret"));
+        assert!(clipboard_matches_owned(&matching, "copied secret"));
+        forget_owned_clipboard(&mut matching);
         assert!(matching.value.is_none());
         assert!(matching.expires_at.is_none());
 
-        let mut replaced = OwnedClipboard {
+        let replaced = OwnedClipboard {
             value: Some(Zeroizing::new("copied secret".to_string())),
             expires_at: Instant::now().checked_add(Duration::from_secs(30)),
         };
-        assert!(!forget_owned_clipboard(&mut replaced, "newer clipboard content"));
-        assert!(replaced.value.is_none());
-        assert!(replaced.expires_at.is_none());
+        assert!(!clipboard_matches_owned(&replaced, "newer clipboard content"));
     }
 }
