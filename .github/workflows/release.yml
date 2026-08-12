@@ -138,7 +138,7 @@ jobs:
       - name: Build native installer bundles
         if: matrix.platform != 'windows'
         working-directory: apps/desktop
-        run: npm run tauri -- build
+        run: npm run build:${{ matrix.platform }}
 
       - name: Build Windows installer bundle
         if: matrix.platform == 'windows'
@@ -146,9 +146,9 @@ jobs:
         shell: pwsh
         run: |
           if ($env:TAURI_WINDOWS_CONFIG) {
-            npm run tauri -- build --config $env:TAURI_WINDOWS_CONFIG
+            npm run build:windows -- --config $env:TAURI_WINDOWS_CONFIG
           } else {
-            npm run tauri -- build
+            npm run build:windows
           }
 
       - name: Smoke test Linux installers

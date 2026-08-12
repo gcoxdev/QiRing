@@ -16,9 +16,7 @@ QiRing uses Rust 1.93.1, Node.js, npm, Vite, and Tauri 2. Node.js 24 LTS is used
 Install [Rust with rustup](https://www.rust-lang.org/tools/install), [Node.js 24 LTS](https://nodejs.org/), and the [Tauri system prerequisites](https://v2.tauri.app/start/prerequisites/) for the host operating system. Then install the locked frontend dependencies from the repository root:
 
 ```bash
-cd apps/desktop
-npm ci
-cd ../..
+npm --prefix apps/desktop ci
 ```
 
 The configured native distribution targets are:
@@ -30,6 +28,26 @@ The configured native distribution targets are:
 | Windows | MSI | `target/release/bundle/msi/*.msi` |
 
 Native installers must be built on their corresponding operating system: MSI on Windows, DMG on macOS, and AppImage/DEB on Linux. The current project is not configured for Android, iOS, RPM, Flatpak, Snap, AUR, NSIS, or app-store packages.
+
+### Build shortcuts
+
+The following shortcuts can be run from the repository root after installing the desktop dependencies with `npm --prefix apps/desktop ci`:
+
+| Command | Result |
+| --- | --- |
+| `npm run build:native` | All bundle formats configured for the current operating system |
+| `npm run build:linux` | AppImage and DEB |
+| `npm run build:linux-appimage` | AppImage only |
+| `npm run build:linux-deb` | DEB only |
+| `npm run build:windows` | Windows MSI |
+| `npm run build:macos` | macOS DMG |
+| `npm run build:macos-universal` | Universal Intel/Apple Silicon DMG |
+| `npm run build:binary` | Unbundled release executable |
+| `npm run build:binary-debug` | Unbundled debug executable |
+
+Platform bundles still must be built on their corresponding operating system. The same shortcuts are also available when working directly inside `apps/desktop`.
+
+The AppImage-producing shortcuts set `NO_STRIP=1` for `linuxdeploy`. This avoids the `failed to run linuxdeploy` failure seen on distributions where `linuxdeploy` cannot strip one or more bundled binaries. The combined `build:linux` shortcut sets it as well because that command also produces an AppImage.
 
 ### Validate the workspace
 
@@ -96,16 +114,16 @@ This compiles the Rust crates and desktop backend without creating a platform in
 
 ### Build an unbundled desktop executable
 
-From `apps/desktop`, build a release executable without an installer:
+From the repository root, build a release executable without an installer:
 
 ```bash
-npm run tauri -- build --no-bundle
+npm run build:binary
 ```
 
 The executable is written to `target/release/qiring-desktop` on Linux/macOS or `target/release/qiring-desktop.exe` on Windows. For a debug executable, use:
 
 ```bash
-npm run tauri -- build --debug --no-bundle
+npm run build:binary-debug
 ```
 
 Debug output is written under `target/debug`.
@@ -151,28 +169,27 @@ sudo apt install \
 Build both configured Linux formats:
 
 ```bash
-cd apps/desktop
-npm run tauri -- build --bundles appimage,deb
+npm run build:linux
 ```
 
 Build just one format when desired:
 
 ```bash
-npm run tauri -- build --bundles appimage
-npm run tauri -- build --bundles deb
+npm run build:linux-appimage
+npm run build:linux-deb
 ```
 
 An AppImage can run directly after making it executable:
 
 ```bash
-chmod +x ../../target/release/bundle/appimage/*.AppImage
-../../target/release/bundle/appimage/*.AppImage
+chmod +x target/release/bundle/appimage/*.AppImage
+target/release/bundle/appimage/*.AppImage
 ```
 
 Install a DEB on Debian or Ubuntu with:
 
 ```bash
-sudo apt install ../../target/release/bundle/deb/*.deb
+sudo apt install target/release/bundle/deb/*.deb
 ```
 
 AppImage is the recommended output for Manjaro and other non-Debian distributions.
@@ -188,23 +205,20 @@ xcode-select --install
 Then build the configured DMG on a Mac:
 
 ```bash
-cd apps/desktop
-npm run tauri -- build --bundles dmg
+npm run build:macos
 ```
 
 Open the resulting DMG and drag QiRing into Applications:
 
 ```bash
-open ../../target/release/bundle/dmg/*.dmg
+open target/release/bundle/dmg/*.dmg
 ```
 
 The default build uses the Mac's native architecture. To create a universal Intel/Apple Silicon DMG, install both Rust targets and select Tauri's universal target:
 
 ```bash
 rustup target add x86_64-apple-darwin aarch64-apple-darwin
-
-cd apps/desktop
-npm run tauri -- build --target universal-apple-darwin --bundles dmg
+npm run build:macos-universal
 ```
 
 Universal artifacts are written below `target/universal-apple-darwin/release/bundle`.
@@ -229,24 +243,22 @@ MSI creation also requires the Windows VBSCRIPT optional feature. It is normally
 Build the MSI from PowerShell or Command Prompt on Windows:
 
 ```powershell
-cd apps/desktop
-npm run tauri -- build --bundles msi
+npm run build:windows
 ```
 
 The resulting MSI can be opened normally or installed from PowerShell:
 
 ```powershell
-$installer = Get-ChildItem ..\..\target\release\bundle\msi\*.msi | Select-Object -First 1
+$installer = Get-ChildItem target\release\bundle\msi\*.msi | Select-Object -First 1
 Start-Process msiexec.exe -Wait -ArgumentList '/i', $installer.FullName
 ```
 
 ### Build all bundles configured for the current host
 
-The following is the command used by the release workflow. Tauri selects the bundle formats that apply to the current operating system from `apps/desktop/src-tauri/tauri.conf.json`:
+This shortcut asks Tauri to select every configured bundle format that applies to the current operating system:
 
 ```bash
-cd apps/desktop
-npm run tauri -- build
+npm run build:native
 ```
 
 Local bundles are unsigned unless platform signing credentials are configured. Public tagged releases must be signed; macOS releases must also be notarized. See [the release process](docs/release-process.md) for signing variables, checksums, SBOM generation, provenance attestations, and the GitHub Actions release flow.
