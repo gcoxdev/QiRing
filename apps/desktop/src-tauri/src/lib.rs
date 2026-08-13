@@ -6,7 +6,7 @@ use qiring_core::{
     PasswordProfile, RecoveryMaterial, RecoveryUnlockResult, SecurityStatus, TotpCode, UnlockResult,
     VaultItem, VaultService, VaultSummary,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
@@ -28,10 +28,11 @@ struct AppState {
     approved_backup_directories: Arc<Mutex<HashSet<PathBuf>>>,
     window_bounds: Arc<WindowBoundsGuard>,
     pending_print_basename: Arc<Mutex<Option<String>>>,
+    ui_preferences_path: PathBuf,
 }
 
 impl AppState {
-    fn new(vault_path: PathBuf, window_state_path: PathBuf) -> Self {
+    fn new(vault_path: PathBuf, window_state_path: PathBuf, ui_preferences_path: PathBuf) -> Self {
         Self {
             service: Arc::new(Mutex::new(VaultService::new(vault_path))),
             clipboard: Arc::new(ClipboardGuard::default()),
@@ -43,6 +44,7 @@ impl AppState {
                 persistence: Mutex::new(()),
             }),
             pending_print_basename: Arc::new(Mutex::new(None)),
+            ui_preferences_path,
         }
     }
 }
@@ -68,6 +70,26 @@ struct WindowBoundsState {
     revision: u64,
     persisted_revision: u64,
     changed_at: Option<Instant>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct UiPreferences {
+    theme: String,
+}
+
+impl Default for UiPreferences {
+    fn default() -> Self {
+        Self {
+            theme: "system".into(),
+        }
+    }
+}
+
+struct StoragePaths {
+    vault: PathBuf,
+    window_state: PathBuf,
+    ui_preferences: PathBuf,
+    portable: bool,
 }
 
 struct ClipboardGuard {
@@ -114,6 +136,14 @@ const WINDOW_MIN_HEIGHT: u32 = 600;
 const WINDOW_BOUNDS_PERSIST_DELAY: Duration = Duration::from_millis(500);
 const WINDOW_BOUNDS_PERSIST_POLL: Duration = Duration::from_millis(200);
 const RECOVERY_PRINT_TITLE_PREFIX: &str = "QiRing-Recovery-Key-";
+const PREVIOUS_APP_IDENTIFIER: &str = "dev.qiring.desktop";
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+const PORTABLE_DATA_DIRECTORY: &str = "QiRingData";
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+const PORTABLE_MARKER_FILE: &str = "qiring-portable";
+const PORTABLE_ENVIRONMENT_VARIABLE: &str = "QIRING_PORTABLE";
+const MAX_UI_PREFERENCES_BYTES: u64 = 4 * 1024;
+const MAX_WINDOW_STATE_BYTES: u64 = 64 * 1024;
 
 #[tauri::command]
 async fn create_vault(
@@ -327,9 +357,29 @@ fn update_settings(state: State<'_, AppState>, settings: AppSettings) -> Result<
             return Err("Choose the automatic backup directory with the system dialog first.".into());
         }
     }
+    let theme = settings.theme.clone();
     lock_service(&state)?
         .update_settings(settings)
+        .map_err(display_error)?;
+    if let Err(error) = save_ui_preferences(&state.ui_preferences_path, &UiPreferences { theme }) {
+        eprintln!("Settings were saved, but the startup theme preference could not be updated: {error}");
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_bootstrap_theme(state: State<'_, AppState>) -> Result<String, String> {
+    load_ui_preferences(&state.ui_preferences_path)
+        .map(|preferences| preferences.theme)
         .map_err(display_error)
+}
+
+#[tauri::command]
+fn set_bootstrap_theme(state: State<'_, AppState>, theme: String) -> Result<(), String> {
+    if !is_valid_theme(&theme) {
+        return Err("Theme must be system, dark, or light.".into());
+    }
+    save_ui_preferences(&state.ui_preferences_path, &UiPreferences { theme }).map_err(display_error)
 }
 
 #[tauri::command]
@@ -569,9 +619,19 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let vault_path = resolve_vault_path(app)?;
-            let window_state_path = app.path().app_config_dir()?.join("window-state.json");
-            let state = AppState::new(vault_path, window_state_path);
+            let storage = resolve_storage_paths(app)?;
+            if storage.portable {
+                eprintln!(
+                    "QiRing portable mode is active. App-owned data: {}",
+                    storage
+                        .vault
+                        .parent()
+                        .map(Path::display)
+                        .map(|path| path.to_string())
+                        .unwrap_or_else(|| "unknown".into())
+                );
+            }
+            let state = AppState::new(storage.vault, storage.window_state, storage.ui_preferences);
             let background_state = state.clone();
             let app_handle = app.handle().clone();
             app.manage(state);
@@ -634,6 +694,8 @@ pub fn run() {
             delete_profile,
             get_settings,
             update_settings,
+            get_bootstrap_theme,
+            set_bootstrap_theme,
             health_report,
             choose_backup_directory,
             select_item_icon_dialog,
@@ -893,13 +955,13 @@ fn is_public_ipv6(ip: Ipv6Addr) -> bool {
 }
 
 fn restore_window_bounds(window: &tauri::WebviewWindow, guard: &WindowBoundsGuard) -> bool {
-    let Ok(bytes) = fs::read(&guard.path) else {
+    let Ok(bytes) = qiring_storage::read_bounded(&guard.path, MAX_WINDOW_STATE_BYTES) else {
         return false;
     };
     let Ok(saved) = serde_json::from_slice::<PersistedWindowBounds>(&bytes) else {
         return false;
     };
-    if saved.width == 0 || saved.height == 0 || saved.width > 32_768 || saved.height > 32_768 {
+    if !is_valid_window_bounds(&saved) {
         return false;
     }
     let Ok(monitors) = window.available_monitors() else {
@@ -1215,24 +1277,410 @@ fn clear_ephemeral_authorizations(state: &AppState) {
     }
 }
 
-fn resolve_vault_path(app: &tauri::App) -> anyhow::Result<PathBuf> {
-    let app_data = app
+fn resolve_storage_paths(app: &tauri::App) -> anyhow::Result<StoragePaths> {
+    let standard_data = app
         .path()
         .app_data_dir()
         .context("operating system did not provide an application data directory")?;
-    ensure_private_directory(&app_data)?;
-    let preferred = app_data.join("vault.qiring");
-    if preferred.exists() {
-        return Ok(preferred);
+    let standard_config = app
+        .path()
+        .app_config_dir()
+        .context("operating system did not provide an application configuration directory")?;
+    let previous_data = app
+        .path()
+        .data_dir()
+        .context("operating system did not provide a data directory")?
+        .join(PREVIOUS_APP_IDENTIFIER);
+    let previous_config = app
+        .path()
+        .config_dir()
+        .context("operating system did not provide a configuration directory")?
+        .join(PREVIOUS_APP_IDENTIFIER);
+
+    let portable_root = resolve_portable_data_root()?;
+    let (vault, window_state, ui_preferences, portable) = if let Some(root) = portable_root {
+        (
+            root.join("vault.qiring"),
+            root.join("window-state.json"),
+            root.join("ui-preferences.json"),
+            true,
+        )
+    } else {
+        (
+            standard_data.join("vault.qiring"),
+            standard_config.join("window-state.json"),
+            standard_config.join("ui-preferences.json"),
+            false,
+        )
+    };
+
+    for parent in [vault.parent(), window_state.parent(), ui_preferences.parent()]
+        .into_iter()
+        .flatten()
+    {
+        qiring_storage::ensure_private_directory(parent)
+            .with_context(|| format!("failed to prepare QiRing data directory {}", parent.display()))?;
     }
 
-    if let Some(legacy) = legacy_vault_path().filter(|path| path.is_file()) {
-        if let Some(parent) = legacy.parent() {
-            ensure_private_directory(parent)?;
-        }
-        return Ok(legacy);
+    let mut ring_candidates = Vec::new();
+    if portable {
+        ring_candidates.push(standard_data.join("vault.qiring"));
     }
-    Ok(preferred)
+    ring_candidates.push(previous_data.join("vault.qiring"));
+    if let Some(legacy) = legacy_vault_path() {
+        ring_candidates.push(legacy);
+    }
+    migrate_ring_if_missing(&vault, &ring_candidates)?;
+
+    let mut window_candidates = Vec::new();
+    if portable {
+        window_candidates.push(standard_config.join("window-state.json"));
+    }
+    window_candidates.push(previous_config.join("window-state.json"));
+    migrate_json_if_missing::<PersistedWindowBounds>(
+        &window_state,
+        &window_candidates,
+        MAX_WINDOW_STATE_BYTES,
+        "window state",
+        is_valid_window_bounds,
+    )?;
+
+    let mut preference_candidates = Vec::new();
+    if portable {
+        preference_candidates.push(standard_config.join("ui-preferences.json"));
+    }
+    preference_candidates.push(previous_config.join("ui-preferences.json"));
+    migrate_json_if_missing::<UiPreferences>(
+        &ui_preferences,
+        &preference_candidates,
+        MAX_UI_PREFERENCES_BYTES,
+        "UI preferences",
+        |preferences| is_valid_theme(&preferences.theme),
+    )?;
+
+    Ok(StoragePaths {
+        vault,
+        window_state,
+        ui_preferences,
+        portable,
+    })
+}
+
+fn resolve_portable_data_root() -> anyhow::Result<Option<PathBuf>> {
+    let explicitly_requested =
+        env::args_os().any(|argument| argument == "--portable") || portable_environment_requested()?;
+
+    #[cfg(target_os = "linux")]
+    {
+        let launcher = env::var_os("APPIMAGE").map(PathBuf::from);
+        let marker_requested = launcher
+            .as_deref()
+            .and_then(Path::parent)
+            .is_some_and(|parent| parent.join(PORTABLE_MARKER_FILE).is_file());
+        if !explicitly_requested && !marker_requested {
+            if launcher
+                .as_deref()
+                .is_some_and(portable_data_directory_exists_beside)
+            {
+                anyhow::bail!(
+                    "QiRingData exists beside this AppImage but portable mode is disabled. Restore the qiring-portable marker or move QiRingData before using standard mode"
+                );
+            }
+            return Ok(None);
+        }
+        let launcher = launcher.context(
+            "portable mode on Linux requires an AppImage launch (the APPIMAGE environment variable is missing)",
+        )?;
+        portable_root_beside_launcher(&launcher).map(Some)
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let launcher = env::current_exe().context("failed to locate the QiRing executable")?;
+        let marker_requested = launcher
+            .parent()
+            .is_some_and(|parent| parent.join(PORTABLE_MARKER_FILE).is_file());
+        if !explicitly_requested && !marker_requested {
+            if portable_data_directory_exists_beside(&launcher) {
+                anyhow::bail!(
+                    "QiRingData exists beside this executable but portable mode is disabled. Restore the qiring-portable marker or move QiRingData before using standard mode"
+                );
+            }
+            return Ok(None);
+        }
+        portable_root_beside_launcher(&launcher).map(Some)
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        if explicitly_requested {
+            anyhow::bail!("portable mode is supported only by AppImage and standalone Windows builds");
+        }
+        Ok(None)
+    }
+}
+
+fn portable_environment_requested() -> anyhow::Result<bool> {
+    let Some(value) = env::var_os(PORTABLE_ENVIRONMENT_VARIABLE) else {
+        return Ok(false);
+    };
+    let normalized = value.to_string_lossy().trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "" | "0" | "false" | "no" | "off" => Ok(false),
+        _ => anyhow::bail!("{PORTABLE_ENVIRONMENT_VARIABLE} must be 1/true/yes/on or 0/false/no/off"),
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn portable_data_directory_exists_beside(launcher: &Path) -> bool {
+    launcher
+        .parent()
+        .is_some_and(|parent| parent.join(PORTABLE_DATA_DIRECTORY).is_dir())
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn portable_root_beside_launcher(launcher: &Path) -> anyhow::Result<PathBuf> {
+    let launcher = fs::canonicalize(launcher)
+        .with_context(|| format!("failed to resolve launcher path {}", launcher.display()))?;
+    if !launcher.is_file() {
+        anyhow::bail!("portable launcher is not a file: {}", launcher.display());
+    }
+    let parent = launcher
+        .parent()
+        .context("portable launcher has no parent directory")?;
+    let root = parent.join(PORTABLE_DATA_DIRECTORY);
+    match fs::symlink_metadata(&root) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            anyhow::bail!(
+                "portable data directory must not be a symbolic link: {}",
+                root.display()
+            );
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to inspect portable data directory {}", root.display()))
+        }
+    }
+    #[cfg(target_os = "windows")]
+    reject_windows_install_directory(&launcher)?;
+    qiring_storage::ensure_private_directory(&root).with_context(|| {
+        format!(
+            "portable mode cannot create or secure {}. Move QiRing to a writable private directory or disable portable mode",
+            root.display()
+        )
+    })?;
+    verify_portable_directory_writable(&root)?;
+    Ok(root)
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn verify_portable_directory_writable(root: &Path) -> anyhow::Result<()> {
+    let probe = root.join(format!(".write-check-{}", Uuid::new_v4()));
+    qiring_storage::save_bytes_atomic(&probe, b"QiRing portable storage check")
+        .with_context(|| format!("portable data directory is not writable: {}", root.display()))?;
+    fs::remove_file(&probe)
+        .with_context(|| format!("failed to remove portable storage check file {}", probe.display()))?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn reject_windows_install_directory(launcher: &Path) -> anyhow::Result<()> {
+    for variable in ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"] {
+        let Some(directory) = env::var_os(variable).map(PathBuf::from) else {
+            continue;
+        };
+        if launcher.starts_with(&directory) {
+            anyhow::bail!(
+                "portable mode is not supported for an installed executable under {}. Use the standalone Windows build in a user-writable private directory",
+                directory.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn migrate_ring_if_missing(target: &Path, candidates: &[PathBuf]) -> anyhow::Result<()> {
+    if target
+        .try_exists()
+        .context("failed to inspect Ring destination")?
+    {
+        return Ok(());
+    }
+
+    struct Candidate {
+        path: PathBuf,
+        vault_id: Uuid,
+        bytes: Vec<u8>,
+    }
+
+    let mut existing = Vec::new();
+    let mut seen = HashSet::new();
+    for candidate in candidates {
+        if candidate == target || !seen.insert(candidate.clone()) {
+            continue;
+        }
+        match fs::symlink_metadata(candidate) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to inspect existing Ring {}", candidate.display()))
+            }
+        }
+        let bytes = qiring_storage::read_bounded(candidate, qiring_storage::MAX_VAULT_FILE_BYTES)
+            .with_context(|| format!("failed to read existing Ring {}", candidate.display()))?;
+        let vault = qiring_storage::parse_vault_bytes(&bytes)
+            .with_context(|| format!("existing Ring is invalid: {}", candidate.display()))?;
+        let vault_id = match vault {
+            qiring_storage::VaultFile::Current(vault) => vault.metadata.vault_id,
+            qiring_storage::VaultFile::Legacy(vault) => vault.metadata.vault_id,
+        };
+        existing.push(Candidate {
+            path: candidate.clone(),
+            vault_id,
+            bytes,
+        });
+    }
+
+    let Some(source) = existing.first() else {
+        return Ok(());
+    };
+    if let Some(conflict) = existing
+        .iter()
+        .skip(1)
+        .find(|candidate| candidate.vault_id != source.vault_id)
+    {
+        anyhow::bail!(
+            "multiple different existing Rings were found at {} and {}. QiRing did not choose one automatically; copy the intended vault.qiring to {} and restart",
+            source.path.display(),
+            conflict.path.display(),
+            target.display()
+        );
+    }
+
+    qiring_storage::save_bytes_atomic(target, &source.bytes).with_context(|| {
+        format!(
+            "failed to copy existing Ring from {} to {}",
+            source.path.display(),
+            target.display()
+        )
+    })?;
+    qiring_storage::load_vault_file(target)
+        .with_context(|| format!("copied Ring failed validation at {}", target.display()))?;
+    eprintln!(
+        "Copied existing QiRing data from {} to {}. The original was left in place.",
+        source.path.display(),
+        target.display()
+    );
+    Ok(())
+}
+
+fn migrate_json_if_missing<T>(
+    target: &Path,
+    candidates: &[PathBuf],
+    maximum_bytes: u64,
+    description: &str,
+    is_valid: impl Fn(&T) -> bool,
+) -> anyhow::Result<()>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    if target
+        .try_exists()
+        .with_context(|| format!("failed to inspect {description} destination"))?
+    {
+        return Ok(());
+    }
+    let mut seen = HashSet::new();
+    for candidate in candidates {
+        if candidate == target || !seen.insert(candidate.clone()) {
+            continue;
+        }
+        match fs::symlink_metadata(candidate) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to inspect {description} at {}", candidate.display()))
+            }
+        }
+        let bytes = match qiring_storage::read_bounded(candidate, maximum_bytes) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                eprintln!(
+                    "Ignored invalid previous {description} at {}: {error}",
+                    candidate.display()
+                );
+                continue;
+            }
+        };
+        let value = match serde_json::from_slice::<T>(&bytes) {
+            Ok(value) => value,
+            Err(error) => {
+                eprintln!(
+                    "Ignored invalid previous {description} at {}: {error}",
+                    candidate.display()
+                );
+                continue;
+            }
+        };
+        if !is_valid(&value) {
+            eprintln!(
+                "Ignored invalid previous {description} at {}.",
+                candidate.display()
+            );
+            continue;
+        }
+        qiring_storage::save_bytes_atomic(target, &bytes).with_context(|| {
+            format!(
+                "failed to copy {description} from {} to {}",
+                candidate.display(),
+                target.display()
+            )
+        })?;
+        eprintln!(
+            "Copied QiRing {description} from {} to {}. The original was left in place.",
+            candidate.display(),
+            target.display()
+        );
+        break;
+    }
+    Ok(())
+}
+
+fn is_valid_theme(theme: &str) -> bool {
+    matches!(theme, "system" | "dark" | "light")
+}
+
+fn is_valid_window_bounds(bounds: &PersistedWindowBounds) -> bool {
+    bounds.width > 0 && bounds.height > 0 && bounds.width <= 32_768 && bounds.height <= 32_768
+}
+
+fn load_ui_preferences(path: &Path) -> anyhow::Result<UiPreferences> {
+    match fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(UiPreferences::default()),
+        Err(error) => return Err(error).context("failed to inspect UI preferences"),
+        Ok(_) => {}
+    }
+    let bytes = qiring_storage::read_bounded(path, MAX_UI_PREFERENCES_BYTES)
+        .context("failed to read UI preferences")?;
+    let preferences: UiPreferences =
+        serde_json::from_slice(&bytes).context("failed to parse UI preferences")?;
+    if !is_valid_theme(&preferences.theme) {
+        anyhow::bail!("stored theme preference is invalid");
+    }
+    Ok(preferences)
+}
+
+fn save_ui_preferences(path: &Path, preferences: &UiPreferences) -> anyhow::Result<()> {
+    if !is_valid_theme(&preferences.theme) {
+        anyhow::bail!("theme preference is invalid");
+    }
+    let bytes = serde_json::to_vec_pretty(preferences).context("failed to serialize UI preferences")?;
+    qiring_storage::save_bytes_atomic(path, &bytes).context("failed to save UI preferences")
 }
 
 fn legacy_vault_path() -> Option<PathBuf> {
@@ -1256,17 +1704,6 @@ fn legacy_vault_path() -> Option<PathBuf> {
     base.map(|path| path.join(".qiring").join("vault.qiring"))
 }
 
-fn ensure_private_directory(path: &Path) -> anyhow::Result<()> {
-    fs::create_dir_all(path).context("failed to create application data directory")?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
-            .context("failed to restrict application data directory")?;
-    }
-    Ok(())
-}
-
 fn display_error(error: anyhow::Error) -> String {
     error.to_string()
 }
@@ -1281,6 +1718,39 @@ fn apply_platform_runtime_defaults() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sample_ring_bytes(vault_id: Uuid) -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({
+            "metadata": {
+                "vault_id": vault_id,
+                "created_at": "2026-08-11T00:00:00Z",
+                "schema_version": 2,
+                "master_kdf": {
+                    "params": { "memory_cost_kib": 8192, "iterations": 1, "parallelism": 1 },
+                    "salt": vec![0_u8; 16]
+                },
+                "recovery_kdf": {
+                    "params": { "memory_cost_kib": 8192, "iterations": 1, "parallelism": 1 },
+                    "salt": vec![1_u8; 16]
+                }
+            },
+            "wrapped_keys": {
+                "wrapped_dek_by_master": {
+                    "nonce": vec![0_u8; 24],
+                    "ciphertext": vec![0_u8; 48]
+                },
+                "wrapped_dek_by_recovery": {
+                    "nonce": vec![1_u8; 24],
+                    "ciphertext": vec![1_u8; 48]
+                }
+            },
+            "vault_blob": {
+                "nonce": vec![2_u8; 24],
+                "ciphertext": vec![2_u8; 16]
+            }
+        }))
+        .expect("sample Ring JSON")
+    }
 
     fn sample_window_bounds(width: u32) -> PersistedWindowBounds {
         PersistedWindowBounds {
@@ -1297,6 +1767,7 @@ mod tests {
         let state = AppState::new(
             PathBuf::from("/tmp/qiring-test-vault"),
             PathBuf::from("/tmp/qiring-test-window-state"),
+            PathBuf::from("/tmp/qiring-test-ui-preferences"),
         );
         assert!(selected_backup_path(&state, "unknown").is_err());
         state
@@ -1308,6 +1779,102 @@ mod tests {
             selected_backup_path(&state, "approved").expect("approved path"),
             PathBuf::from("/tmp/selected.qiring-backup")
         );
+    }
+
+    #[test]
+    fn ring_migration_copies_valid_data_and_keeps_the_source() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let source = directory.path().join("old").join("vault.qiring");
+        let target = directory.path().join("new").join("vault.qiring");
+        let bytes = sample_ring_bytes(Uuid::new_v4());
+        qiring_storage::save_bytes_atomic(&source, &bytes).expect("write source Ring");
+
+        migrate_ring_if_missing(&target, std::slice::from_ref(&source)).expect("migrate Ring");
+
+        assert_eq!(fs::read(&target).expect("target Ring"), bytes);
+        assert!(source.is_file());
+        qiring_storage::load_vault_file(&target).expect("valid copied Ring");
+    }
+
+    #[test]
+    fn ring_migration_refuses_to_choose_between_different_rings() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let first = directory.path().join("first").join("vault.qiring");
+        let second = directory.path().join("second").join("vault.qiring");
+        let target = directory.path().join("target").join("vault.qiring");
+        qiring_storage::save_bytes_atomic(&first, &sample_ring_bytes(Uuid::new_v4()))
+            .expect("write first Ring");
+        qiring_storage::save_bytes_atomic(&second, &sample_ring_bytes(Uuid::new_v4()))
+            .expect("write second Ring");
+
+        let error = migrate_ring_if_missing(&target, &[first, second]).expect_err("conflicting Rings");
+
+        assert!(error.to_string().contains("multiple different existing Rings"));
+        assert!(!target.exists());
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    fn portable_storage_uses_a_dedicated_writable_sidecar() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let launcher = directory.path().join(if cfg!(target_os = "windows") {
+            "qiring-desktop.exe"
+        } else {
+            "QiRing.AppImage"
+        });
+        fs::write(&launcher, b"launcher").expect("write launcher");
+
+        let root = portable_root_beside_launcher(&launcher).expect("portable root");
+
+        assert_eq!(root, directory.path().join(PORTABLE_DATA_DIRECTORY));
+        assert!(root.is_dir());
+        assert!(fs::read_dir(&root).expect("read sidecar").next().is_none());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn portable_storage_rejects_a_symlinked_sidecar() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let launcher = directory.path().join("QiRing.AppImage");
+        let redirected = directory.path().join("redirected");
+        fs::write(&launcher, b"launcher").expect("write launcher");
+        fs::create_dir(&redirected).expect("create redirected directory");
+        symlink(&redirected, directory.path().join(PORTABLE_DATA_DIRECTORY)).expect("create sidecar symlink");
+
+        let error = portable_root_beside_launcher(&launcher).expect_err("symlink must be rejected");
+
+        assert!(error.to_string().contains("must not be a symbolic link"));
+    }
+
+    #[test]
+    fn ui_preferences_round_trip_in_an_app_owned_file() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let source = directory.path().join("old").join("ui-preferences.json");
+        let target = directory.path().join("new").join("ui-preferences.json");
+        save_ui_preferences(
+            &source,
+            &UiPreferences {
+                theme: "light".into(),
+            },
+        )
+        .expect("save preferences");
+
+        migrate_json_if_missing::<UiPreferences>(
+            &target,
+            std::slice::from_ref(&source),
+            MAX_UI_PREFERENCES_BYTES,
+            "UI preferences",
+            |preferences| is_valid_theme(&preferences.theme),
+        )
+        .expect("migrate preferences");
+
+        assert_eq!(
+            load_ui_preferences(&target).expect("load preferences").theme,
+            "light"
+        );
+        assert!(source.is_file());
     }
 
     #[test]

@@ -39,6 +39,12 @@ QiRing remembers the main window's last normal size, position, and maximized sta
 
 On Linux Wayland, the desktop compositor intentionally controls absolute window placement. QiRing still restores size and maximized state, but the compositor may choose the opening position. Repository launches can opt into X11/XWayland for exact saved-position restoration with `./scripts/run-desktop.sh --x11`; `--wayland` explicitly retains native Wayland behavior. The launcher's default is `auto`, which respects the current session.
 
+## Ring data location
+
+Installed builds and development runs use the operating system's private per-user directories under the `app.qiring.desktop` application identifier. AppImage and standalone Windows builds can instead use explicit portable mode, which keeps `vault.qiring`, `window-state.json`, `ui-preferences.json`, and restore-safety snapshots in a private `QiRingData` folder beside the launcher. Keep that directory together with the launcher when moving it. The main [README](../README.md#ring-data-and-portable-mode) lists exact platform paths and activation methods.
+
+When QiRing changes from an older storage path, it validates and copies existing data without deleting the source. It will not choose automatically if it detects different Ring identities in multiple legacy locations.
+
 ## Qi icons and favicons
 
 Each Qi entry can store a PNG, JPEG, WebP, GIF, or ICO image up to 512 KiB. Use **Upload** to choose a local image or **From website** to request the site's `/favicon.ico`. Save the Qi after the preview appears. The image is stored with the Qi inside the encrypted vault and appears in the Ring index.

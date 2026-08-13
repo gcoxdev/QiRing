@@ -1,4 +1,5 @@
-const THEME_STORAGE_KEY = "qiring.ui.theme";
+import { invoke } from "@tauri-apps/api/core";
+
 const VALID_THEMES = new Set(["system", "dark", "light"]);
 
 export function applyThemePreference(theme) {
@@ -15,21 +16,21 @@ export function applyThemePreference(theme) {
 }
 
 export function persistThemePreference(theme) {
-  if (!VALID_THEMES.has(theme)) return;
-  try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  } catch {
-    // The encrypted setting remains authoritative if web storage is unavailable.
-  }
+  if (!VALID_THEMES.has(theme)) return Promise.resolve();
+  return invoke("set_bootstrap_theme", { theme }).catch(() => {
+    // The encrypted setting remains authoritative if the sidecar preference
+    // cannot be written. The current page still keeps the selected theme.
+  });
 }
 
-export function storedThemePreference() {
+export async function storedThemePreference() {
   try {
-    const theme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    const theme = await invoke("get_bootstrap_theme");
     return VALID_THEMES.has(theme) ? theme : "system";
   } catch {
     return "system";
   }
 }
 
-applyThemePreference(storedThemePreference());
+applyThemePreference("system");
+storedThemePreference().then(applyThemePreference);

@@ -38,8 +38,10 @@ The following shortcuts can be run from the repository root after installing the
 | `npm run build:native` | All bundle formats configured for the current operating system |
 | `npm run build:linux` | AppImage and DEB |
 | `npm run build:linux-appimage` | AppImage only |
+| `npm run build:linux-appimage-portable` | AppImage plus a portable-mode marker |
 | `npm run build:linux-deb` | DEB only |
 | `npm run build:windows` | Windows MSI |
+| `npm run build:windows-portable` | Standalone Windows executable plus a portable-mode marker |
 | `npm run build:macos` | macOS DMG |
 | `npm run build:macos-universal` | Universal Intel/Apple Silicon DMG |
 | `npm run build:binary` | Unbundled release executable |
@@ -47,7 +49,29 @@ The following shortcuts can be run from the repository root after installing the
 
 Platform bundles still must be built on their corresponding operating system. The same shortcuts are also available when working directly inside `apps/desktop`.
 
-The AppImage-producing shortcuts set `NO_STRIP=1` for `linuxdeploy`. This avoids the `failed to run linuxdeploy` failure seen on distributions where `linuxdeploy` cannot strip one or more bundled binaries. The combined `build:linux` shortcut sets it as well because that command also produces an AppImage.
+The AppImage-producing shortcuts, including the portable shortcut, set `NO_STRIP=1` for `linuxdeploy`. This avoids the `failed to run linuxdeploy` failure seen on distributions where `linuxdeploy` cannot strip one or more bundled binaries. The combined `build:linux` shortcut sets it as well because that command also produces an AppImage.
+
+### Control the output filename
+
+Tauri normally includes the application version and architecture in bundled filenames, such as `QiRing_0.1.0_amd64.AppImage`. Set `QIRING_OUTPUT_NAME` to replace that generated basename for any build shortcut. Supply a filename only—without `.AppImage`, `.deb`, `.dmg`, `.msi`, or `.exe`—and QiRing retains the appropriate extension.
+
+On Linux or macOS:
+
+```bash
+QIRING_OUTPUT_NAME=QiRing-Manjaro npm run build:linux-appimage-portable
+```
+
+That example produces `target/release/bundle/appimage/QiRing-Manjaro.AppImage`. The portable marker is created beside the renamed file as usual.
+
+In Windows PowerShell:
+
+```powershell
+$env:QIRING_OUTPUT_NAME = "QiRing-Setup"
+npm run build:windows
+Remove-Item Env:QIRING_OUTPUT_NAME
+```
+
+The Windows example produces `target\release\bundle\msi\QiRing-Setup.msi`. The same variable works with `build:native`, `build:binary`, `build:binary-debug`, `build:linux`, `build:linux-appimage`, `build:linux-deb`, `build:windows-portable`, `build:macos`, and `build:macos-universal`. Combined builds reuse the basename with each format's extension. If the variable is omitted, Tauri's normal versioned filenames remain unchanged. Renaming affects only the artifact filename; the embedded application version and package metadata remain authoritative.
 
 ### Validate the workspace
 
@@ -176,6 +200,7 @@ Build just one format when desired:
 
 ```bash
 npm run build:linux-appimage
+npm run build:linux-appimage-portable
 npm run build:linux-deb
 ```
 
@@ -193,6 +218,8 @@ sudo apt install target/release/bundle/deb/*.deb
 ```
 
 AppImage is the recommended output for Manjaro and other non-Debian distributions.
+
+The portable AppImage shortcut also writes `qiring-portable` beside the AppImage. Keep both files together. On first launch, QiRing creates a private `QiRingData` directory beside them.
 
 ### Build macOS bundles
 
@@ -252,6 +279,42 @@ The resulting MSI can be opened normally or installed from PowerShell:
 $installer = Get-ChildItem target\release\bundle\msi\*.msi | Select-Object -First 1
 Start-Process msiexec.exe -Wait -ArgumentList '/i', $installer.FullName
 ```
+
+To create a standalone portable Windows build instead of an installer:
+
+```powershell
+npm run build:windows-portable
+```
+
+Distribute `target\release\qiring-desktop.exe` and the adjacent `qiring-portable` marker together. QiRing creates `QiRingData` beside them at first launch. This mode is intended for a standalone executable in a user-writable private folder, not an executable installed under `Program Files`.
+
+### Ring data and portable mode
+
+QiRing's application identifier is `app.qiring.desktop`. Normal development runs and installed DEB, MSI, and macOS builds use the operating system's per-user application directories:
+
+| Platform | Encrypted Ring | Window state and pre-unlock theme |
+| --- | --- | --- |
+| Linux | `$XDG_DATA_HOME/app.qiring.desktop/vault.qiring`, or `~/.local/share/app.qiring.desktop/vault.qiring` | `$XDG_CONFIG_HOME/app.qiring.desktop/`, or `~/.config/app.qiring.desktop/` |
+| macOS | `~/Library/Application Support/app.qiring.desktop/vault.qiring` | `~/Library/Application Support/app.qiring.desktop/` |
+| Windows | `%APPDATA%\app.qiring.desktop\vault.qiring` | `%APPDATA%\app.qiring.desktop\` |
+
+Explicit portable mode is supported for AppImage and standalone Windows builds. It stores QiRing-owned persistent files in one private sidecar directory:
+
+```text
+QiRing.AppImage or qiring-desktop.exe
+qiring-portable
+QiRingData/
+  vault.qiring
+  window-state.json
+  ui-preferences.json
+  restore-safety/
+```
+
+Use the portable build shortcuts above, place an empty `qiring-portable` marker beside an existing supported launcher, launch an AppImage with `--portable`, or set `QIRING_PORTABLE=1`. Move the launcher, marker, and `QiRingData` together when relocating the application. Manual backup exports, recovery-key files, and user-selected automatic-backup directories remain wherever the user chose to save them.
+
+Portable mode deliberately does not apply to DEB, MSI-installed, or macOS application bundles. Those locations can be read-only, shared between users, replaced during upgrades, or protected by code-signing rules. QiRing exits with a clear error if portable mode is requested on an unsupported build or its sidecar cannot be secured. Framework-owned WebView cache files may still use the operating system's standard cache/data location; no Ring contents or QiRing settings are stored there.
+
+On the first launch after the identifier change, QiRing looks for the prior `dev.qiring.desktop` paths and the older Linux/macOS/Windows Ring location. If exactly one Ring identity is found, it validates and copies that encrypted file into the current location, then validates the copy. Window state and file-based UI preferences are copied separately when valid. Original files are never deleted. If different Ring identities are found, QiRing refuses to guess and reports the paths so the intended `vault.qiring` can be selected manually. A theme previously stored only in WebView local storage becomes available again after the first successful unlock, when the encrypted Ring setting is copied into `ui-preferences.json`.
 
 ### Build all bundles configured for the current host
 

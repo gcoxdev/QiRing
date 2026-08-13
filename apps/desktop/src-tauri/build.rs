@@ -20,6 +20,8 @@ const COMMANDS: &[&str] = &[
     "delete_profile",
     "get_settings",
     "update_settings",
+    "get_bootstrap_theme",
+    "set_bootstrap_theme",
     "health_report",
     "choose_backup_directory",
     "select_item_icon_dialog",

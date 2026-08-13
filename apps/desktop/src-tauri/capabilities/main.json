@@ -27,6 +27,8 @@
     "allow-delete-profile",
     "allow-get-settings",
     "allow-update-settings",
+    "allow-get-bootstrap-theme",
+    "allow-set-bootstrap-theme",
     "allow-health-report",
     "allow-choose-backup-directory",
     "allow-select-item-icon-dialog",

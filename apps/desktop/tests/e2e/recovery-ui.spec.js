@@ -22,6 +22,8 @@ test.beforeEach(async ({ page }) => {
       async invoke(command, args = {}) {
         if (command === "plugin:event|listen") return callbackId++;
         if (command === "plugin:event|unlisten") return null;
+        if (command === "get_bootstrap_theme") return "system";
+        if (command === "set_bootstrap_theme") return null;
         if (command === "vault_exists") return false;
         if (command === "prepare_recovery_print") {
           window.__recoveryPrintBasename = args.basename;
@@ -46,6 +48,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("Ring creation requires a verified recovery ceremony and clears the key", async ({ page }) => {
+  await expect(page.locator("#createScreen .section-code")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Initialize encrypted Ring" })).toHaveAttribute("data-icon", "ring");
   await page.locator("#createMaster").fill("correct horse battery staple");
   await page.locator("#createConfirm").fill("correct horse battery staple");
   await page.getByRole("button", { name: "Initialize encrypted Ring" }).click();

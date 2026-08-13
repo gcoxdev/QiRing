@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl as openExternalUrl } from "@tauri-apps/plugin-opener";
 
-export const COMMAND_VERSION = "4";
+export const COMMAND_VERSION = "5";
 
 export const vaultApi = Object.freeze({
   exists: () => invoke("vault_exists"),
@@ -36,6 +36,8 @@ export const vaultApi = Object.freeze({
 
   getSettings: () => invoke("get_settings"),
   updateSettings: (settings) => invoke("update_settings", { settings }),
+  getBootstrapTheme: () => invoke("get_bootstrap_theme"),
+  setBootstrapTheme: (theme) => invoke("set_bootstrap_theme", { theme }),
   securityStatus: () => invoke("get_security_status"),
   health: () => invoke("health_report"),
 

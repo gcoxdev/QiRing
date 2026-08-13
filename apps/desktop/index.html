@@ -18,7 +18,6 @@
         </section>
 
         <section id="createScreen" class="auth-panel" hidden aria-labelledby="createTitle">
-          <p class="section-code">01 / INITIALIZE</p>
           <h2 id="createTitle">Create your Ring</h2>
           <p>Use a unique master password with at least 12 characters. It never leaves this device.</p>
           <form id="createForm" class="stack-form">
@@ -26,7 +25,7 @@
             <input id="createMaster" name="masterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
             <label for="createConfirm">Confirm master password</label>
             <input id="createConfirm" name="confirmPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
-            <button class="primary full" type="submit" data-icon="vault">Initialize encrypted Ring</button>
+            <button class="primary full" type="submit" data-icon="ring">Initialize encrypted Ring</button>
           </form>
         </section>
 
@@ -247,6 +246,7 @@
               </div>
               <nav id="helpNav" class="help-nav" aria-label="Help topics">
                 <button type="button" class="help-nav-link" data-target="help-getting-started">Getting started</button>
+                <button type="button" class="help-nav-link" data-target="help-storage">Ring storage &amp; portable mode</button>
                 <button type="button" class="help-nav-link" data-target="help-unlock">Create, unlock &amp; recovery</button>
                 <button type="button" class="help-nav-link" data-target="help-vault">Ring &amp; Qi editor</button>
                 <button type="button" class="help-nav-link" data-target="help-profiles">Password profiles</button>
@@ -270,6 +270,19 @@
                     <div><dt>Ring index</dt><dd>The searchable, categorized list of all your Qi, shown on the left side of the Ring page.</dd></div>
                     <div><dt>Master password</dt><dd>The password you set when creating the Ring. It never leaves this device and QiRing cannot recover it if it is lost — only the recovery key can.</dd></div>
                     <div><dt>Recovery key</dt><dd>A separate, one-time-shown credential that can unlock the Ring if the master password is forgotten. Store it offline, away from this computer.</dd></div>
+                  </dl>
+                </article>
+
+                <article id="help-storage" class="help-article">
+                  <h3>Ring storage &amp; portable mode</h3>
+                  <p>Normal installed builds and development runs keep QiRing data in the operating system's private per-user application directories. AppImage and standalone Windows builds can instead use explicit portable mode.</p>
+                  <dl class="help-definitions">
+                    <div><dt>Standard storage</dt><dd>Uses the platform application directories under the <code>app.qiring.desktop</code> identifier. This is the safe default for DEB, MSI-installed, macOS, and development builds.</dd></div>
+                    <div><dt>Portable storage</dt><dd>Uses a private <code>QiRingData</code> directory beside a supported AppImage or standalone Windows executable. It contains the encrypted Ring, window state, initial-theme preference, and restore-safety snapshots.</dd></div>
+                    <div><dt>Moving a portable copy</dt><dd>Move the launcher, its <code>qiring-portable</code> marker, and the complete <code>QiRingData</code> directory together. If the data directory remains but the marker is missing, QiRing stops instead of silently opening another Ring.</dd></div>
+                    <div><dt>Installed builds</dt><dd>Portable mode is not supported for DEB, MSI-installed, or macOS application bundles because their installation directories may be shared, read-only, replaced during upgrades, or protected by code signing.</dd></div>
+                    <div><dt>Path migration</dt><dd>When upgrading from an older application identifier or Ring location, QiRing validates and copies existing files, leaving the originals untouched. It refuses to guess if different Ring identities are found.</dd></div>
+                    <div><dt>Exports and recovery files</dt><dd>Manual backups, recovery-key files, and user-selected automatic-snapshot directories stay in the locations you explicitly choose; portable mode does not move them.</dd></div>
                   </dl>
                 </article>
 

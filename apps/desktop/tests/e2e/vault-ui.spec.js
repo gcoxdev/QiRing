@@ -90,6 +90,8 @@ async function installTauriMock(page) {
         switch (command) {
           case "plugin:event|listen": return args.handler;
           case "plugin:event|unlisten": return null;
+          case "get_bootstrap_theme": return window.sessionStorage.getItem("mock.qiring.theme") || "dark";
+          case "set_bootstrap_theme": window.sessionStorage.setItem("mock.qiring.theme", args.theme); return null;
           case "vault_exists": return true;
           case "unlock_vault_master": {
             window.__unlockFeedbackAtInvoke = {
@@ -102,7 +104,7 @@ async function installTauriMock(page) {
           }
           case "get_security_status": return {
             schema_version: 2,
-            command_version: "4",
+            command_version: "5",
             biometric_available: false,
             biometric_enabled: false,
             auto_lock_minutes: settings.auto_lock_minutes,
@@ -559,7 +561,7 @@ test("Help documents every module, setting, and keyboard route", async ({ page }
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await page.getByRole("menuitem", { name: /^Help/ }).click();
   await expect(page.locator("#viewTitle")).toHaveText("Help");
-  for (const heading of ["Getting started", "Create, unlock & recovery", "Ring & Qi editor", "Password profiles", "Ring health", "Encrypted backups", "Settings", "Navigation & shortcuts"]) {
+  for (const heading of ["Getting started", "Ring storage & portable mode", "Create, unlock & recovery", "Ring & Qi editor", "Password profiles", "Ring health", "Encrypted backups", "Settings", "Navigation & shortcuts"]) {
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
   for (const setting of ["Auto-lock minutes", "Clipboard clear seconds", "Theme", "Button display", "Backup directory", "Rotate master password", "Replace recovery key"]) {
@@ -586,7 +588,7 @@ test("Help documents every module, setting, and keyboard route", async ({ page }
 
   await page.locator("#clearHelpSearch").click();
   await expect(page.locator("#helpSearch")).toHaveValue("");
-  await expect(page.locator(".help-nav-link:visible")).toHaveCount(8);
+  await expect(page.locator(".help-nav-link:visible")).toHaveCount(9);
 });
 
 test("ring categories expose collapsible groups with live counters", async ({ page }) => {
