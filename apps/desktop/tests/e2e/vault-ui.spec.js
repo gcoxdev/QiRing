@@ -936,9 +936,23 @@ test("button display preference and encrypted Qi icons update the interface", as
   await expect(page.locator("#itemIconPreview")).toBeVisible();
   await page.getByRole("button", { name: "Save Qi" }).click();
   await expect(page.locator("#itemList img")).toHaveCount(1);
+  const darkFaviconStyle = await page.locator("#itemList img").evaluate((image) => {
+    const style = getComputedStyle(image);
+    return { filter: style.filter, padding: style.padding };
+  });
+  expect(darkFaviconStyle.filter).not.toBe("none");
+  expect(darkFaviconStyle.padding).toBe("2px");
 
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await page.getByRole("menuitem", { name: /Settings/ }).click();
+  await page.getByLabel("Theme").selectOption("light");
+  const lightFaviconFilter = await page.locator("#itemList img").evaluate((image) => getComputedStyle(image).filter);
+  expect(lightFaviconFilter).not.toBe(darkFaviconStyle.filter);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.getByLabel("Theme").selectOption("system");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  const systemDarkFaviconFilter = await page.locator("#itemList img").evaluate((image) => getComputedStyle(image).filter);
+  expect(systemDarkFaviconFilter).toBe(darkFaviconStyle.filter);
   await page.getByLabel("Button display").selectOption("icons");
   await expect(page.locator("html")).toHaveAttribute("data-button-display", "icons");
   await expect(page.locator("#chooseBackupDirectory .button-label")).toBeHidden();
