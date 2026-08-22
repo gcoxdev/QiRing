@@ -59,6 +59,8 @@ QiRing clears a copied value only if the clipboard still contains that exact QiR
 
 Manual exports are encrypted with a separate backup passphrase and require a system file-dialog selection. Always preview an import before restore. An atomic restore locks the current session. Automatic snapshots contain the already-encrypted vault and are retained according to Settings.
 
+For migration, trusted printing, or offline cold storage, **Backups & Transfer** can also export every Qi as an unencrypted UTF-8 CSV after a plaintext warning. It can import CSV only after structural validation and explicit column mapping. QiRing exports tags, security questions, and custom fields as JSON arrays inside quoted cells; a downloaded template provides the canonical headers. Ordinary comma-separated tag columns are also accepted, and unmapped source columns can be appended to Notes. Native XLSX is not read directly; save the workbook as CSV UTF-8 in Excel, LibreOffice, or Numbers first.
+
 ## TOTP
 
 TOTP codes use the device clock and the standard 30-second window. If a code is rejected, verify that automatic date and time are enabled on the device before requesting a fresh code.

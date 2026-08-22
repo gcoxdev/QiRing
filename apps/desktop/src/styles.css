@@ -1289,7 +1289,7 @@ kbd {
   padding: 8px;
 }
 
-.custom-field-secret {
+.check-row.custom-field-secret {
   min-height: var(--control-height);
   align-items: center;
   padding-inline: 4px;
@@ -1302,7 +1302,7 @@ kbd {
 
 .question-row {
   display: grid;
-  grid-template-columns: minmax(150px, 0.8fr) minmax(190px, 1.2fr) auto auto;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(190px, 1.2fr) auto auto auto;
   gap: 5px;
 }
 
@@ -1660,6 +1660,186 @@ kbd {
   margin-top: 12px;
 }
 
+.plaintext-transfer {
+  margin-top: 28px;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 18px;
+}
+
+.plaintext-badge {
+  border: 1px solid var(--danger);
+  background: var(--danger-bg);
+  padding: 4px 7px;
+  color: var(--danger);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+.plaintext-warning {
+  border: 1px solid var(--danger);
+  border-left-width: 4px;
+  background: var(--danger-bg);
+  padding: 11px 13px;
+  color: var(--danger);
+  line-height: 1.5;
+}
+
+.csv-mapping-panel {
+  margin-top: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  padding: 16px;
+}
+
+.csv-mapping-panel .section-heading {
+  align-items: end;
+}
+
+.csv-mapping-panel h3 {
+  margin: 3px 0 0;
+}
+
+.csv-mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 15px 0;
+}
+
+.csv-mapping-grid label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.csv-mapping-grid label > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 16px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.csv-mapping-grid label strong {
+  color: var(--warning);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.csv-format-reference {
+  margin: 12px 0;
+  border-left: 3px solid var(--line-strong);
+  background: var(--surface-2);
+  padding: 10px 12px;
+}
+
+.csv-format-reference > strong {
+  display: block;
+  margin-bottom: 7px;
+}
+
+.csv-format-reference > p {
+  margin: 0 0 9px;
+  color: var(--muted);
+}
+
+.csv-format-reference dl {
+  display: grid;
+  gap: 5px;
+  margin: 0 0 8px;
+}
+
+.csv-format-reference dl > div {
+  display: grid;
+  grid-template-columns: minmax(145px, 0.7fr) minmax(0, 1.3fr);
+  gap: 8px;
+}
+
+.csv-format-reference :is(dt, dd) {
+  min-width: 0;
+  margin: 0;
+}
+
+.csv-format-reference dt {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+}
+
+.csv-format-reference :is(dd, small) {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.csv-data-preview {
+  margin: 14px 0;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.csv-data-preview h4,
+.csv-data-preview p {
+  margin: 0;
+}
+
+.csv-data-preview p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.csv-preview-table-wrap {
+  margin-top: 9px;
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+}
+
+.csv-preview-table-wrap table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+  background: var(--surface-2);
+  font-size: 12px;
+}
+
+.csv-preview-table-wrap :is(th, td) {
+  max-width: 280px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 7px 8px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.csv-preview-table-wrap th {
+  background: var(--surface-3);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.csv-preview-table-wrap tr:last-child > * {
+  border-bottom: 0;
+}
+
+.csv-preview-table-wrap tr > *:last-child {
+  border-right: 0;
+}
+
+.csv-preview-warning {
+  margin: 5px 0 0;
+  color: var(--warning);
+  font-family: "IBM Plex Sans", sans-serif;
+}
+
 .snapshot-list {
   display: grid;
   gap: 6px;
@@ -1983,7 +2163,7 @@ kbd {
   }
 
   .question-row {
-    grid-template-columns: minmax(0, 1fr) max-content max-content;
+    grid-template-columns: minmax(0, 1fr) max-content max-content max-content;
   }
 
   .question-row .question-input {
@@ -1995,11 +2175,15 @@ kbd {
   }
 
   .question-row .copy-question {
+    grid-column: 3;
+  }
+
+  .question-row .toggle-question {
     grid-column: 2;
   }
 
   .question-row .remove-question {
-    grid-column: 3;
+    grid-column: 4;
   }
 
   .custom-field-row {
@@ -2016,6 +2200,10 @@ kbd {
 
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .csv-mapping-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .help-definitions {

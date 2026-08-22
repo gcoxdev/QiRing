@@ -1,16 +1,18 @@
+mod interchange;
 mod model;
 mod passwords;
 mod service;
 mod totp;
 mod validation;
 
+pub use interchange::csv_template_bytes;
 pub use model::*;
 pub use passwords::generate_password_value;
 pub use service::{validate_backup_envelope_bytes, VaultService};
 pub use totp::generate_totp_code;
 pub use validation::sniff_image_media_type;
 
-pub const COMMAND_VERSION: &str = "5";
+pub const COMMAND_VERSION: &str = "7";
 
 const MAX_FUZZ_MODEL_BYTES: usize = 256 * 1024;
 

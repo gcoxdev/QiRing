@@ -142,10 +142,11 @@ pub(crate) fn validate_settings(settings: &AppSettings) -> anyhow::Result<()> {
 
 fn validate_title(value: &str) -> anyhow::Result<()> {
     let count = value.trim().chars().count();
-    if count == 0 || count > MAX_TITLE_CHARS {
-        return Err(
-            CoreError::InvalidInput("title/name is required and limited to 256 characters".into()).into(),
-        );
+    if count == 0 {
+        return Err(CoreError::InvalidInput("title/name is required".into()).into());
+    }
+    if count > MAX_TITLE_CHARS {
+        return Err(CoreError::InvalidInput("title/name exceeds 256 characters".into()).into());
     }
     Ok(())
 }
@@ -224,36 +225,62 @@ pub fn sniff_image_media_type(bytes: &[u8]) -> Option<&'static str> {
 }
 
 fn validate_tags(tags: &[String]) -> anyhow::Result<()> {
-    if tags.len() > MAX_TAGS || tags.iter().any(|tag| tag.chars().count() > MAX_TAG_CHARS) {
-        return Err(CoreError::InvalidInput("too many tags or tag is too long".into()).into());
+    if tags.len() > MAX_TAGS {
+        return Err(CoreError::InvalidInput("tags are limited to 50 per Qi".into()).into());
+    }
+    if let Some(index) = tags.iter().position(|tag| tag.chars().count() > MAX_TAG_CHARS) {
+        return Err(CoreError::InvalidInput(format!("tag {} exceeds 64 characters", index + 1)).into());
     }
     Ok(())
 }
 
 fn validate_questions(questions: &[SecurityQuestion]) -> anyhow::Result<()> {
-    if questions.len() > MAX_QUESTIONS
-        || questions.iter().any(|question| {
-            question.question.chars().count() > MAX_FIELD_CHARS
-                || question.answer.chars().count() > MAX_FIELD_CHARS
-        })
-    {
-        return Err(CoreError::InvalidInput("security questions exceed supported limits".into()).into());
+    if questions.len() > MAX_QUESTIONS {
+        return Err(CoreError::InvalidInput("security questions are limited to 20 per Qi".into()).into());
+    }
+    for (index, question) in questions.iter().enumerate() {
+        if question.question.chars().count() > MAX_FIELD_CHARS {
+            return Err(CoreError::InvalidInput(format!(
+                "security question {} exceeds 4,096 characters",
+                index + 1
+            ))
+            .into());
+        }
+        if question.answer.chars().count() > MAX_FIELD_CHARS {
+            return Err(CoreError::InvalidInput(format!(
+                "security answer {} exceeds 4,096 characters",
+                index + 1
+            ))
+            .into());
+        }
     }
     Ok(())
 }
 
 fn validate_custom_fields(fields: &[CustomField]) -> anyhow::Result<()> {
-    if fields.len() > MAX_CUSTOM_FIELDS
-        || fields.iter().any(|field| {
-            field.label.trim().is_empty()
-                || field.label.chars().count() > MAX_TITLE_CHARS
-                || field.value.chars().count() > MAX_FIELD_CHARS
-        })
-    {
-        return Err(CoreError::InvalidInput(
-            "custom fields require a label and must stay within supported limits".into(),
-        )
-        .into());
+    if fields.len() > MAX_CUSTOM_FIELDS {
+        return Err(CoreError::InvalidInput("custom fields are limited to 50 per Qi".into()).into());
+    }
+    for (index, field) in fields.iter().enumerate() {
+        if field.label.trim().is_empty() {
+            return Err(
+                CoreError::InvalidInput(format!("custom field {} requires a label", index + 1)).into(),
+            );
+        }
+        if field.label.chars().count() > MAX_TITLE_CHARS {
+            return Err(CoreError::InvalidInput(format!(
+                "custom field {} label exceeds 256 characters",
+                index + 1
+            ))
+            .into());
+        }
+        if field.value.chars().count() > MAX_FIELD_CHARS {
+            return Err(CoreError::InvalidInput(format!(
+                "custom field {} value exceeds 4,096 characters",
+                index + 1
+            ))
+            .into());
+        }
     }
     Ok(())
 }

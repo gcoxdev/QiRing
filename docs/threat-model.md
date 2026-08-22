@@ -4,7 +4,7 @@
 
 **Reviewed:** 2026-08-08
 
-**Scope:** Local desktop vault, webview, Tauri command boundary, file storage, clipboard, recovery, TOTP, encrypted backups, and explicit favicon import.
+**Scope:** Local desktop vault, webview, Tauri command boundary, file storage, clipboard, recovery, TOTP, encrypted backups, explicit plaintext CSV transfer, and explicit favicon import.
 
 QiRing is an offline-first password manager. Browser integration, synchronization, and breach checking are intentionally out of scope until each receives a separate security design.
 
@@ -21,6 +21,7 @@ The system must preserve these invariants:
 5. Restore never replaces the current vault without a verified backup and a recoverable pre-restore snapshot.
 6. Locking drops the decrypted Rust session, clears displayed fields, invalidates temporary file authorizations, and clears the clipboard only when QiRing still owns its value.
 7. Creating a vault never silently overwrites an existing vault.
+8. Plaintext export occurs only after an explicit warning and user-selected destination; CSV import validates the complete bounded file before changing the Ring.
 
 ## Trust boundaries
 
@@ -29,6 +30,7 @@ The system must preserve these invariants:
 | Webview to Rust | Every IPC argument and event | Rust validation, resource caps, explicit command permissions, no global Tauri bridge |
 | Vault/backup files | JSON, schema, metadata, salts, KDF parameters, nonces, ciphertext | 64 MiB vault/128 MiB backup bounds, schema dispatch, KDF bounds, nonce validation, AEAD authentication |
 | Filesystem paths | Existing vault path, backup destinations, restore sources | Durable per-user app-data path, symlink rejection, system file dialogs, unforgeable selection tokens, approved backup directories |
+| CSV interchange | Untrusted UTF-8 text, quoting, headers, JSON-in-cell arrays, spreadsheet formulas | 32 MiB/100,000-row/128-column/512 KiB-cell bounds, strict rectangular parsing, duplicate-header rejection, row validation, formula-prefix neutralization on export |
 | URL opener | Credential URL fields | Frontend URL parsing plus Tauri capability restricted to HTTP and HTTPS |
 | Favicon importer | User-supplied website URL, DNS, redirects, response bytes | Explicit command capability, HTTP/HTTPS ports 80/443 only, no proxy, public-address validation and DNS pinning per hop, redirect/time/size/type limits |
 | Clipboard | Secrets copied by the user | Rust-owned generation/value guard, clear-if-unchanged timer, clear on lock |
@@ -53,6 +55,7 @@ Fully compromised operating systems, privileged malware, hardware keyloggers, an
 - Schema v1 vaults migrate after a successful master unlock and force a new recovery-key ceremony. Schema v2 is the current format.
 - Recovery unlock rotates both the master and recovery credentials. Recovery-key regeneration invalidates the previous key.
 - Manual backups use a separate passphrase, KDF metadata authenticated as AEAD associated data, bounded parsing, preview-before-import, atomic restore, and a five-copy pre-restore safety set.
+- Plaintext CSV export is an intentional confidentiality opt-out for migration and cold storage. It requires a warning and system save dialog, excludes icons and password history, neutralizes spreadsheet formula prefixes reversibly, and remains the user's responsibility after creation. CSV imports use dialog tokens, preview and mapping, validate every row before one persisted batch mutation, and never merge or replace existing Qi.
 
 ### Persistence
 
@@ -87,6 +90,7 @@ Fully compromised operating systems, privileged malware, hardware keyloggers, an
 - TOTP depends on the host clock and the standard 30-second window. A skewed clock can cause valid credentials to be rejected.
 - Offline KDF protection slows guessing but cannot compensate for a weak master password. The current minimum is 12 characters.
 - Automatic snapshots contain the already-encrypted vault. Manual backups have independent passphrase protection. Anyone who can delete every local copy can still cause denial of service.
+- Plaintext CSV exports provide no confidentiality after creation. Printer spools, spreadsheet recent-file lists, filesystem backups, and deleted-file recovery can retain copies outside QiRing's control.
 - Biometric unlock is not exposed or advertised; it remains disabled until platform key retrieval and fallback behavior receive a separate design and review.
 - Linux desktop dependencies currently include Tauri/WebKitGTK's GTK3-era unmaintained crates and `glib 0.18.5`, whose `VariantStrIter` iterator methods carry the informational `RUSTSEC-2024-0429` unsoundness warning. QiRing does not call those methods directly. These transitive warnings are monitored and not suppressed; there are no RustSec vulnerability-class findings in the current lock.
 

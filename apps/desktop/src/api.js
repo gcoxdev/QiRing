@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl as openExternalUrl } from "@tauri-apps/plugin-opener";
 
-export const COMMAND_VERSION = "5";
+export const COMMAND_VERSION = "7";
 
 export const vaultApi = Object.freeze({
   exists: () => invoke("vault_exists"),
@@ -48,6 +48,12 @@ export const vaultApi = Object.freeze({
     invoke("preview_selected_backup", { token, passphrase }),
   importBackup: (token, passphrase) =>
     invoke("import_selected_backup", { token, passphrase }),
+  saveCsvTemplate: () => invoke("save_csv_template_dialog"),
+  exportPlaintextCsv: () => invoke("export_plaintext_csv_dialog"),
+  selectPlaintextCsv: () => invoke("select_plaintext_csv_file"),
+  previewPlaintextCsv: (token) => invoke("preview_selected_plaintext_csv", { token }),
+  importPlaintextCsv: (token, mapping) =>
+    invoke("import_selected_plaintext_csv", { token, mapping }),
   listSnapshots: () => invoke("list_snapshots"),
   restoreSnapshot: (path) => invoke("restore_snapshot", { path }),
 

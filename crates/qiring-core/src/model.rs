@@ -390,6 +390,46 @@ pub struct ImportReport {
     pub safety_snapshot_path: String,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CsvColumnMapping {
+    pub item_type: Option<String>,
+    pub title: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub url: Option<String>,
+    pub notes: Option<String>,
+    pub tags: Option<String>,
+    pub category: Option<String>,
+    pub security_questions: Option<String>,
+    pub custom_fields: Option<String>,
+    pub totp_secret: Option<String>,
+    #[serde(default)]
+    pub include_unmapped_in_notes: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CsvImportPreview {
+    pub headers: Vec<String>,
+    pub row_count: usize,
+    pub sample_rows: Vec<Vec<String>>,
+    pub canonical: bool,
+    pub suggested_mapping: CsvColumnMapping,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CsvImportReport {
+    pub imported_count: usize,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlaintextExportManifest {
+    pub path: String,
+    pub row_count: usize,
+    pub size_bytes: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupSnapshot {
     pub path: String,

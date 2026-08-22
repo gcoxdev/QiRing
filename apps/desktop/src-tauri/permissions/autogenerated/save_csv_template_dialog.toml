@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-csv-template-dialog"
+description = "Enables the save_csv_template_dialog command without any pre-configured scope."
+commands.allow = ["save_csv_template_dialog"]
+
+[[permission]]
+identifier = "deny-save-csv-template-dialog"
+description = "Denies the save_csv_template_dialog command without any pre-configured scope."
+commands.deny = ["save_csv_template_dialog"]

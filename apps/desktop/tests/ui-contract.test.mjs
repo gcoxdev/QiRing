@@ -18,8 +18,20 @@ test("production webview boundary is explicit and least privilege", async () => 
   assert.equal(capability.permissions.includes("allow-prepare-recovery-print"), true);
   assert.equal(capability.permissions.includes("allow-get-bootstrap-theme"), true);
   assert.equal(capability.permissions.includes("allow-set-bootstrap-theme"), true);
+  assert.equal(capability.permissions.includes("allow-export-plaintext-csv-dialog"), true);
+  assert.equal(capability.permissions.includes("allow-import-selected-plaintext-csv"), true);
   const opener = capability.permissions.find((permission) => typeof permission === "object" && permission.identifier === "opener:allow-open-url");
   assert.deepEqual(opener.allow.map((entry) => entry.url).sort(), ["http://*", "https://*"]);
+});
+
+test("plaintext transfer requires preview, mapping, and export confirmation", async () => {
+  const source = await read("../src/main.js");
+  const backend = await read("../src-tauri/src/lib.rs");
+  assert.match(source, /Export every Qi as plaintext/);
+  assert.match(source, /previewPlaintextCsv/);
+  assert.match(source, /include_unmapped_in_notes/);
+  assert.match(backend, /selected_csv_imports/);
+  assert.match(backend, /preview_selected_plaintext_csv/);
 });
 
 test("frontend does not inject user-controlled HTML", async () => {

@@ -345,7 +345,7 @@ The desktop UI currently supports:
   - **Vault**: a two-pane `Ring`/`Qi` layout. `Ring` is a categorized, expandable/collapsible, searchable and taggable list of Qi entries with drag-and-drop or keyboard custom ordering (plus A–Z/Z–A modes). `Qi` is a single-form editor (no tabs) with Info fields (category, name, tags, URL with external open), credential fields (username, password with copy/show-hide, TOTP with countdown), notes, security questions, and password history.
   - **Password Profiles**: a master-detail screen — a scrollable profile list on the left and a policy editor on the right (total length, per-class min/max ranges, allowed symbols, ambiguous-character filtering).
   - **Health**: an offline report of reused, weak, old, and missing passwords, computed locally from the decrypted vault.
-  - **Backups**: manual passphrase-protected export/import with a mandatory preview step, plus automatic snapshot listing and restore.
+  - **Backups & Transfer**: manual passphrase-protected backup export/import with a mandatory preview step, automatic snapshot listing and restore, and warned plaintext CSV transfer with template download, structural validation, and column mapping. The UTF-8 CSV opens in spreadsheet applications; native XLSX files must first be saved as CSV UTF-8.
   - **Settings**: session (auto-lock, clipboard clear, lock-on-minimize/blur), theme, button display, automatic-snapshot preferences, master-password rotation, and recovery-key replacement.
   - **Help**: in-app reference covering every page, setting, and keyboard shortcut.
 - Qi actions: `New Qi`, `Save Qi`, `Delete Qi` (with a named confirmation and a short undo window).

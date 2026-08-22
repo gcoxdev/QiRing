@@ -1,10 +1,11 @@
 use anyhow::Context;
 use base64::Engine;
 use qiring_core::{
-    sniff_image_media_type, AppSettings, BackupManifest, BackupPreview, BackupSnapshot, GeneratedPassword,
-    HealthReport, ImportReport, ItemInput, ItemPatch, ItemSummary, ListFilter, PasswordPolicy,
-    PasswordProfile, RecoveryMaterial, RecoveryUnlockResult, SecurityStatus, TotpCode, UnlockResult,
-    VaultItem, VaultService, VaultSummary,
+    csv_template_bytes, sniff_image_media_type, AppSettings, BackupManifest, BackupPreview, BackupSnapshot,
+    CsvColumnMapping, CsvImportPreview, CsvImportReport, GeneratedPassword, HealthReport, ImportReport,
+    ItemInput, ItemPatch, ItemSummary, ListFilter, PasswordPolicy, PasswordProfile, PlaintextExportManifest,
+    RecoveryMaterial, RecoveryUnlockResult, SecurityStatus, TotpCode, UnlockResult, VaultItem, VaultService,
+    VaultSummary,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -25,6 +26,7 @@ struct AppState {
     service: Arc<Mutex<VaultService>>,
     clipboard: Arc<ClipboardGuard>,
     selected_backups: Arc<Mutex<HashMap<String, PathBuf>>>,
+    selected_csv_imports: Arc<Mutex<HashMap<String, PathBuf>>>,
     approved_backup_directories: Arc<Mutex<HashSet<PathBuf>>>,
     window_bounds: Arc<WindowBoundsGuard>,
     pending_print_basename: Arc<Mutex<Option<String>>>,
@@ -37,6 +39,7 @@ impl AppState {
             service: Arc::new(Mutex::new(VaultService::new(vault_path))),
             clipboard: Arc::new(ClipboardGuard::default()),
             selected_backups: Arc::new(Mutex::new(HashMap::new())),
+            selected_csv_imports: Arc::new(Mutex::new(HashMap::new())),
             approved_backup_directories: Arc::new(Mutex::new(HashSet::new())),
             window_bounds: Arc::new(WindowBoundsGuard {
                 path: window_state_path,
@@ -549,6 +552,131 @@ fn import_selected_backup(
 }
 
 #[tauri::command]
+async fn save_csv_template_dialog(app: AppHandle) -> Result<Option<String>, String> {
+    let picker = app.clone();
+    let selection = tauri::async_runtime::spawn_blocking(move || {
+        picker
+            .dialog()
+            .file()
+            .set_title("Save QiRing CSV import template")
+            .set_file_name("qiring-import-template.csv")
+            .add_filter("CSV spreadsheet", &["csv"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|error| format!("CSV template save dialog failed: {error}"))?;
+    let Some(selection) = selection else {
+        return Ok(None);
+    };
+    let path = selection
+        .into_path()
+        .map_err(|error| format!("selected file is not a local path: {error}"))?;
+    qiring_storage::save_bytes_atomic_user_directory(&path, &csv_template_bytes()).map_err(display_error)?;
+    Ok(Some(path.display().to_string()))
+}
+
+#[tauri::command]
+async fn export_plaintext_csv_dialog(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<PlaintextExportManifest>, String> {
+    let picker = app.clone();
+    let selection = tauri::async_runtime::spawn_blocking(move || {
+        picker
+            .dialog()
+            .file()
+            .set_title("Export plaintext QiRing CSV")
+            .set_file_name("qiring-plaintext-export.csv")
+            .add_filter("CSV spreadsheet", &["csv"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|error| format!("CSV export dialog failed: {error}"))?;
+    let Some(selection) = selection else {
+        return Ok(None);
+    };
+    let path = selection
+        .into_path()
+        .map_err(|error| format!("selected file is not a local path: {error}"))?;
+    let service = Arc::clone(&state.service);
+    run_service_blocking(service, move |service| {
+        service
+            .export_plaintext_csv(path)
+            .map(Some)
+            .map_err(display_error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn select_plaintext_csv_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<SelectedBackup>, String> {
+    let picker = app.clone();
+    let selection = tauri::async_runtime::spawn_blocking(move || {
+        picker
+            .dialog()
+            .file()
+            .set_title("Select CSV spreadsheet to import")
+            .add_filter("CSV spreadsheet", &["csv"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|error| format!("CSV open dialog failed: {error}"))?;
+    let Some(selection) = selection else {
+        return Ok(None);
+    };
+    let path = selection
+        .into_path()
+        .map_err(|error| format!("selected file is not a local path: {error}"))?;
+    let token = Uuid::new_v4().to_string();
+    let mut selections = state
+        .selected_csv_imports
+        .lock()
+        .map_err(|_| "state lock poisoned".to_string())?;
+    selections.clear();
+    selections.insert(token.clone(), path.clone());
+    Ok(Some(SelectedBackup {
+        token,
+        display_path: path.display().to_string(),
+    }))
+}
+
+#[tauri::command]
+async fn preview_selected_plaintext_csv(
+    state: State<'_, AppState>,
+    token: String,
+) -> Result<CsvImportPreview, String> {
+    let path = selected_csv_path(&state, &token)?;
+    let service = Arc::clone(&state.service);
+    run_service_blocking(service, move |service| {
+        service.preview_plaintext_csv(path).map_err(display_error)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn import_selected_plaintext_csv(
+    state: State<'_, AppState>,
+    token: String,
+    mapping: CsvColumnMapping,
+) -> Result<CsvImportReport, String> {
+    let path = selected_csv_path(&state, &token)?;
+    let service = Arc::clone(&state.service);
+    let report = run_service_blocking(service, move |service| {
+        service.import_plaintext_csv(path, mapping).map_err(display_error)
+    })
+    .await?;
+    state
+        .selected_csv_imports
+        .lock()
+        .map_err(|_| "state lock poisoned".to_string())?
+        .remove(&token);
+    Ok(report)
+}
+
+#[tauri::command]
 fn list_snapshots(state: State<'_, AppState>) -> Result<Vec<BackupSnapshot>, String> {
     lock_service(&state)?.list_snapshots().map_err(display_error)
 }
@@ -704,6 +832,11 @@ pub fn run() {
             select_backup_file,
             preview_selected_backup,
             import_selected_backup,
+            save_csv_template_dialog,
+            export_plaintext_csv_dialog,
+            select_plaintext_csv_file,
+            preview_selected_plaintext_csv,
+            import_selected_plaintext_csv,
             list_snapshots,
             restore_snapshot,
             rotate_master_password,
@@ -1165,6 +1298,16 @@ fn selected_backup_path(state: &AppState, token: &str) -> Result<PathBuf, String
         .ok_or_else(|| "Backup selection expired; choose the file again.".to_string())
 }
 
+fn selected_csv_path(state: &AppState, token: &str) -> Result<PathBuf, String> {
+    state
+        .selected_csv_imports
+        .lock()
+        .map_err(|_| "state lock poisoned".to_string())?
+        .get(token)
+        .cloned()
+        .ok_or_else(|| "CSV selection expired; choose the file again.".to_string())
+}
+
 fn lock_service(state: &AppState) -> Result<std::sync::MutexGuard<'_, VaultService>, String> {
     state
         .service
@@ -1270,6 +1413,9 @@ fn forget_owned_clipboard(owned: &mut OwnedClipboard) {
 
 fn clear_ephemeral_authorizations(state: &AppState) {
     if let Ok(mut selections) = state.selected_backups.lock() {
+        selections.clear();
+    }
+    if let Ok(mut selections) = state.selected_csv_imports.lock() {
         selections.clear();
     }
     if let Ok(mut directories) = state.approved_backup_directories.lock() {

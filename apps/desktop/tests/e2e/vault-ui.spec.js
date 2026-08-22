@@ -73,6 +73,7 @@ async function installTauriMock(page) {
         retention_count: 10
       }
     };
+    let csvPreviewCount = 0;
 
     window.__TAURI_INTERNALS__ = {
       transformCallback(callback, once = false) {
@@ -104,7 +105,7 @@ async function installTauriMock(page) {
           }
           case "get_security_status": return {
             schema_version: 2,
-            command_version: "5",
+            command_version: "7",
             biometric_available: false,
             biometric_enabled: false,
             auto_lock_minutes: settings.auto_lock_minutes,
@@ -210,6 +211,44 @@ async function installTauriMock(page) {
               }
             : { analyzed_items: items.length, weak_count: 0, reused_count: 0, old_count: 0, issues: [] };
           case "list_snapshots": return [];
+          case "save_csv_template_dialog": return "/tmp/qiring-import-template.csv";
+          case "export_plaintext_csv_dialog": return { path: "/tmp/export.csv", row_count: items.length, size_bytes: 2048 };
+          case "select_plaintext_csv_file": return { token: "csv-token", display_path: "/tmp/import.csv" };
+          case "preview_selected_plaintext_csv": {
+            csvPreviewCount += 1;
+            return {
+              headers: ["Name", "Login", "Password", "Extra"],
+              row_count: 2,
+              sample_rows: [
+                [csvPreviewCount > 1 ? "Example One fixed" : "Example One", "alice@example.com", "secret-one", "Member: 42"],
+                ["Example Two", "bob@example.com", "secret-two", "Color: green"]
+              ],
+              canonical: false,
+              suggested_mapping: {
+                item_type: null,
+                title: "Name",
+                username: "Login",
+                password: "Password",
+                url: null,
+                notes: null,
+                tags: null,
+                category: null,
+                security_questions: null,
+                custom_fields: null,
+                totp_secret: null,
+                include_unmapped_in_notes: false
+              },
+              warnings: ["Review every suggested column mapping before importing."]
+            };
+          }
+          case "import_selected_plaintext_csv": {
+            window.__csvImportMapping = structuredClone(args.mapping);
+            if (window.__failCsvImportOnce) {
+              window.__failCsvImportOnce = false;
+              throw new Error("CSV row 3: item_type must be login or secure_note");
+            }
+            return { imported_count: 2, warnings: [] };
+          }
           case "touch_activity": return null;
           case "copy_secret": return 30;
           case "lock_vault": return null;
@@ -276,6 +315,49 @@ test("context actions and profile master-detail editor follow the active module"
   await page.getByRole("menuitem", { name: /Ring Health/ }).click();
   await expect(page.getByRole("button", { name: "New Profile" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Save Profile" })).toBeHidden();
+});
+
+test("CSV import validates and maps before adding rows", async ({ page }) => {
+  await page.getByRole("button", { name: "Open navigation menu" }).click();
+  await page.getByRole("menuitem", { name: /Backups/ }).click();
+  await expect(page.getByText("Anyone who can open an exported CSV")).toBeVisible();
+
+  await page.getByRole("button", { name: "Choose CSV" }).click();
+  await page.getByRole("button", { name: "Validate and map" }).click();
+  await expect(page.getByText("CSV structure is valid")).toBeVisible();
+  await expect(page.locator('[data-csv-field="title"]')).toHaveValue("Name");
+  await expect(page.locator('[data-csv-field="username"]')).toHaveValue("Login");
+  const mappingLabelWeights = await page.locator('.csv-mapping-grid label:has([data-csv-field="title"]), .csv-mapping-grid label:has([data-csv-field="username"])').evaluateAll(([title, username]) => ({
+    title: getComputedStyle(title.querySelector("span")).fontWeight,
+    username: getComputedStyle(username).fontWeight
+  }));
+  expect(mappingLabelWeights.title).toBe(mappingLabelWeights.username);
+  await expect(page.getByLabel("Append every non-empty unmapped column to Notes")).toBeChecked();
+  await expect(page.locator("#csvPreviewHead")).toContainText("Qi Name");
+  await expect(page.locator("#csvPreviewHead")).toContainText("Username");
+  await expect(page.locator("#csvPreviewBody")).toContainText("Example One");
+  await expect(page.locator("#csvPreviewBody")).toContainText("••••••••");
+  await expect(page.locator("#csvPreviewBody")).not.toContainText("secret-one");
+  await page.locator('[data-csv-field="username"]').selectOption("");
+  await expect(page.locator("#csvPreviewHead")).not.toContainText("Username");
+  await page.locator('[data-csv-field="username"]').selectOption("Login");
+  await page.evaluate(() => { window.__failCsvImportOnce = true; });
+  await page.getByRole("button", { name: "Import validated rows" }).click();
+  await expect(page.getByRole("heading", { name: "Import 2 Qi?" })).toBeVisible();
+  await page.getByRole("button", { name: "Import Qi" }).click();
+  await expect(page.getByText("CSV row 3: item_type must be login or secure_note")).toBeVisible();
+  await expect(page.locator("#csvPreviewBody")).toContainText("Example One fixed");
+  await expect(page.locator('[data-csv-field="username"]')).toHaveValue("Login");
+  await expect(page.getByLabel("Append every non-empty unmapped column to Notes")).toBeChecked();
+  await page.getByRole("button", { name: "Import validated rows" }).click();
+  await page.getByRole("button", { name: "Import Qi" }).click();
+  await expect(page.getByText("Imported 2 Qi from CSV.")).toBeVisible();
+  expect(await page.evaluate(() => window.__csvImportMapping)).toMatchObject({
+    title: "Name",
+    username: "Login",
+    password: "Password",
+    include_unmapped_in_notes: true
+  });
 });
 
 test("controls align and the 800 by 600 layouts do not clip", async ({ page }) => {
@@ -371,15 +453,22 @@ test("credential, TOTP, and security-question controls reflow at minimum width",
   expect(totpPositions.codeHeight).toBeLessThan(32);
 
   await page.getByRole("button", { name: "Add question" }).click();
+  const answerInput = page.locator(".question-row .answer-input");
+  await answerInput.fill("North Harbor");
+  await expect(answerInput).toHaveAttribute("type", "password");
+  await page.getByRole("button", { name: "Show security answer" }).click();
+  await expect(answerInput).toHaveAttribute("type", "text");
+  await expect(page.getByRole("button", { name: "Hide security answer" })).toHaveAttribute("aria-pressed", "true");
   const questionPositions = await page.locator(".question-row").evaluate((row) => {
     const question = row.querySelector(".question-input").getBoundingClientRect();
     const answer = row.querySelector(".answer-input").getBoundingClientRect();
+    const toggle = row.querySelector(".toggle-question").getBoundingClientRect();
     const copy = row.querySelector(".copy-question").getBoundingClientRect();
     const remove = row.querySelector(".remove-question").getBoundingClientRect();
     const bounds = row.getBoundingClientRect();
     return {
       answerBelowQuestion: answer.top >= question.bottom,
-      actionsShareRow: Math.abs(copy.top - remove.top) < 1,
+      actionsShareRow: Math.abs(toggle.top - copy.top) < 1 && Math.abs(copy.top - remove.top) < 1,
       removeInside: remove.right <= bounds.right + 1
     };
   });
@@ -396,12 +485,22 @@ test("credential, TOTP, and security-question controls reflow at minimum width",
     return {
       valueBelowLabel: value.top >= row.querySelector(".custom-field-label").getBoundingClientRect().bottom,
       actionsShareRow: Math.abs(value.top - secret.top) < 1,
+      secretAlignment: getComputedStyle(row.querySelector(".custom-field-secret")).alignItems,
       removeInside: remove.right <= bounds.right + 1
     };
   });
   expect(customFieldBounds.valueBelowLabel).toBe(true);
   expect(customFieldBounds.actionsShareRow).toBe(true);
+  expect(customFieldBounds.secretAlignment).toBe("center");
   expect(customFieldBounds.removeInside).toBe(true);
+});
+
+test("secure notes hide the website icon action", async ({ page }) => {
+  await page.getByRole("button", { name: "Expand all categories" }).click();
+  await page.getByRole("button", { name: "Passport", exact: true }).click();
+  await expect(page.getByRole("button", { name: "From website" })).toBeHidden();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  await expect(page.getByRole("button", { name: "From website" })).toBeVisible();
 });
 
 test("password strength updates live and custom fields round-trip through the Qi editor", async ({ page }) => {
@@ -543,7 +642,7 @@ test("accent headings establish hierarchy without redundant section codes", asyn
   const modules = [
     ["Password Profiles", "#profilesView", "Password Profiles"],
     ["Ring Health", "#healthView", "Ring Health"],
-    ["Backups", "#backupsView", "Encrypted Backups"],
+    ["Backups", "#backupsView", "Backups & Transfer"],
     ["Settings", "#settingsView", "Settings"],
     ["Help", "#helpView", "Help"]
   ];
@@ -561,7 +660,7 @@ test("Help documents every module, setting, and keyboard route", async ({ page }
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await page.getByRole("menuitem", { name: /^Help/ }).click();
   await expect(page.locator("#viewTitle")).toHaveText("Help");
-  for (const heading of ["Getting started", "Ring storage & portable mode", "Create, unlock & recovery", "Ring & Qi editor", "Password profiles", "Ring health", "Encrypted backups", "Settings", "Navigation & shortcuts"]) {
+  for (const heading of ["Getting started", "Ring storage & portable mode", "Create, unlock & recovery", "Ring & Qi editor", "Password profiles", "Ring health", "Backups & CSV transfer", "Settings", "Navigation & shortcuts"]) {
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
   await page.setViewportSize({ width: 700, height: 700 });
@@ -931,7 +1030,7 @@ test("all authenticated modules and keyboard navigation remain usable", async ({
   const modules = [
     ["Password Profiles", "#profilesView", "Password Profiles"],
     ["Ring Health", "#healthView", "Ring Health"],
-    ["Backups", "#backupsView", "Encrypted Backups"],
+    ["Backups", "#backupsView", "Backups & Transfer"],
     ["Settings", "#settingsView", "Settings"],
     ["Help", "#helpView", "Help"]
   ];

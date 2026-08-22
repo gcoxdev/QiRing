@@ -45,6 +45,8 @@ const elements = Object.fromEntries(
     "testProfile", "profileTestOutput", "runHealth", "healthAnalyzed", "healthWeak", "healthReused",
     "healthOld", "healthIssues", "backupPassphrase", "toggleBackupPassphrase", "exportBackup", "selectBackup", "selectedBackupPath",
     "restorePassphrase", "toggleRestorePassphrase", "previewBackup", "restoreBackup", "backupPreview", "refreshSnapshots", "snapshotList",
+    "saveCsvTemplate", "exportPlaintextCsv", "selectPlaintextCsv", "previewPlaintextCsv", "selectedPlaintextCsvPath", "csvImportPreview",
+    "csvMappingForm", "csvRowCount", "csvUnmappedToNotes", "csvPreviewHead", "csvPreviewBody", "importPlaintextCsv",
     "settingsForm", "autoLockMinutes", "clipboardSeconds", "lockOnMinimize", "lockOnBlur", "themeSelect", "buttonDisplaySelect",
     "automaticBackups", "includeSettings", "backupRetention", "backupDirectory", "chooseBackupDirectory",
     "oldMasterPassword", "toggleOldMasterPassword", "newMasterPassword", "newMasterPasswordConfirm", "toggleNewMasterPassword", "toggleNewMasterPasswordConfirm", "newMasterPasswordStrength", "newMasterPasswordStrengthMeter", "newMasterPasswordStrengthLabel", "rotateMaster", "recoveryMasterPassword", "toggleRecoveryMasterPassword", "regenerateRecovery", "recoveryKeyStatus",
@@ -71,7 +73,7 @@ const viewLabels = {
   qiring: "Ring",
   profiles: "Password Profiles",
   health: "Ring Health",
-  backups: "Encrypted Backups",
+  backups: "Backups & Transfer",
   settings: "Settings",
   help: "Help"
 };
@@ -89,6 +91,8 @@ const state = {
   suppressDirty: false,
   selectedBackupToken: null,
   backupPreviewed: false,
+  selectedCsvToken: null,
+  csvPreview: null,
   totpExpiresAt: 0,
   totpTimer: null,
   recoveryContinuation: null,
@@ -1030,7 +1034,7 @@ function updateItemTypeFields() {
   const isLogin = elements.itemType.value === "login";
   elements.credentialFields.hidden = !isLogin;
   elements.questionSection.hidden = !isLogin;
-  elements.fetchItemFavicon.disabled = !isLogin;
+  elements.fetchItemFavicon.hidden = !isLogin;
 }
 
 function estimatePasswordStrength(password) {
@@ -1216,6 +1220,18 @@ function addQuestionRow(question = { question: "", answer: "" }) {
     attributes: { "aria-label": "Security answer", maxlength: "4096", placeholder: "Answer…", autocomplete: "off" }
   });
   answerInput.value = question.answer || "";
+  const toggleButton = createElement("button", {
+    className: "secondary toggle-question",
+    text: "Show",
+    type: "button",
+    icon: "eye",
+    attributes: {
+      "aria-label": "Show security answer",
+      "aria-pressed": "false",
+      "data-secret-label": "security answer"
+    }
+  });
+  toggleButton.addEventListener("click", () => toggleSecretVisibility(answerInput, toggleButton));
   const copyButton = createElement("button", { className: "secondary copy-question", text: "Copy", type: "button", icon: "copy" });
   copyButton.addEventListener("click", () => copySecret(answerInput.value, "Security answer"));
   const removeButton = createElement("button", { className: "danger remove-question", text: "Remove", type: "button", icon: "trash" });
@@ -1224,7 +1240,7 @@ function addQuestionRow(question = { question: "", answer: "" }) {
     markItemDirty();
   });
   for (const input of [questionInput, answerInput]) input.addEventListener("input", markItemDirty);
-  row.append(questionInput, answerInput, copyButton, removeButton);
+  row.append(questionInput, answerInput, toggleButton, copyButton, removeButton);
   elements.questionList.append(row);
 }
 
@@ -1848,6 +1864,197 @@ async function restoreBackup() {
   toast(`Backup restored. A recoverable pre-restore snapshot was retained (${formatBytes(report.size_bytes)} restored).`);
 }
 
+function resetCsvImport() {
+  state.selectedCsvToken = null;
+  state.csvPreview = null;
+  elements.selectedPlaintextCsvPath.textContent = "No CSV selected.";
+  elements.previewPlaintextCsv.disabled = true;
+  elements.csvImportPreview.hidden = true;
+  elements.csvImportPreview.replaceChildren();
+  elements.csvMappingForm.hidden = true;
+  elements.csvMappingForm.reset();
+}
+
+async function saveCsvTemplate() {
+  const path = await busy(elements.saveCsvTemplate, () => vaultApi.saveCsvTemplate());
+  if (path) toast("CSV import template saved.");
+}
+
+async function exportPlaintextCsv() {
+  if (!await askConfirmation({
+    title: "Export every Qi as plaintext?",
+    message: "The CSV will contain readable passwords, TOTP secrets, security answers, custom fields, and notes. Anyone with the file can read them. Continue only for migration, trusted printing, or offline cold storage.",
+    confirmLabel: "Export plaintext"
+  })) return;
+  const manifest = await busy(elements.exportPlaintextCsv, () => vaultApi.exportPlaintextCsv());
+  if (!manifest) return;
+  toast(`Exported ${manifest.row_count} Qi as unencrypted CSV (${formatBytes(manifest.size_bytes)}).`);
+}
+
+async function selectPlaintextCsv() {
+  const selection = await busy(elements.selectPlaintextCsv, () => vaultApi.selectPlaintextCsv());
+  if (!selection) return;
+  state.selectedCsvToken = selection.token;
+  state.csvPreview = null;
+  elements.selectedPlaintextCsvPath.textContent = selection.display_path;
+  elements.previewPlaintextCsv.disabled = false;
+  elements.csvImportPreview.hidden = true;
+  elements.csvMappingForm.hidden = true;
+}
+
+function populateCsvMapping(preview, mapping = preview.suggested_mapping, includeUnmapped = true) {
+  for (const select of elements.csvMappingForm.querySelectorAll("select[data-csv-field]")) {
+    const field = select.dataset.csvField;
+    const empty = createElement("option", { text: field === "title" ? "Choose a column…" : "Not imported" });
+    empty.value = "";
+    const options = preview.headers.map((header) => {
+      const option = createElement("option", { text: header });
+      option.value = header;
+      return option;
+    });
+    select.replaceChildren(empty, ...options);
+    select.value = preview.headers.includes(mapping[field]) ? mapping[field] : "";
+  }
+  elements.csvUnmappedToNotes.checked = includeUnmapped;
+  elements.csvRowCount.textContent = `${preview.row_count} ${preview.row_count === 1 ? "row" : "rows"}`;
+  elements.csvMappingForm.hidden = false;
+  renderCsvMappingPreview();
+}
+
+const CSV_FIELD_LABELS = Object.freeze({
+  title: "Qi Name",
+  item_type: "Item type",
+  username: "Username",
+  password: "Password",
+  url: "URL",
+  notes: "Notes",
+  tags: "Tags",
+  category: "Category",
+  security_questions: "Security questions",
+  custom_fields: "Custom fields",
+  totp_secret: "TOTP secret"
+});
+
+function structuredPreview(value, field) {
+  if (!value) return "";
+  try {
+    const entries = JSON.parse(value);
+    if (!Array.isArray(entries)) return "Invalid JSON shape";
+    const noun = field === "security_questions" ? "question" : "custom field";
+    return `${entries.length} ${noun}${entries.length === 1 ? "" : "s"}`;
+  } catch {
+    return "Invalid JSON";
+  }
+}
+
+function mappedPreviewValue(value, field) {
+  if (!value) return "";
+  if (field === "password" || field === "totp_secret") return "••••••••";
+  if (field === "tags") {
+    try {
+      const tags = value.trim().startsWith("[") ? JSON.parse(value) : value.split(",");
+      if (Array.isArray(tags)) return tags.map((tag) => String(tag).trim()).filter(Boolean).join(", ");
+    } catch {
+      return "Invalid tags";
+    }
+  }
+  if (field === "security_questions" || field === "custom_fields") {
+    return structuredPreview(value, field);
+  }
+  return value;
+}
+
+function renderCsvMappingPreview() {
+  if (!state.csvPreview) return;
+  const mappings = [...elements.csvMappingForm.querySelectorAll("select[data-csv-field]")]
+    .map((select) => ({ field: select.dataset.csvField, source: select.value }))
+    .filter((mapping) => mapping.source);
+  const mappedSources = new Set(mappings.map((mapping) => mapping.source));
+  const includeUnmapped = elements.csvUnmappedToNotes.checked;
+  const columns = [
+    { label: "CSV row", field: null },
+    ...mappings.map((mapping) => ({ label: CSV_FIELD_LABELS[mapping.field], ...mapping }))
+  ];
+  if (includeUnmapped) columns.push({ label: "Unmapped → Notes", field: "unmapped" });
+
+  const headerRow = createElement("tr");
+  headerRow.append(...columns.map((column) => createElement("th", { text: column.label })));
+  elements.csvPreviewHead.replaceChildren(headerRow);
+  const rows = (state.csvPreview.sample_rows || []).map((sample, index) => {
+    const source = Object.fromEntries(state.csvPreview.headers.map((header, column) => [header, sample[column] || ""]));
+    const row = createElement("tr");
+    row.append(createElement("th", { text: String(index + 2), attributes: { scope: "row" } }));
+    for (const mapping of mappings) {
+      row.append(createElement("td", { text: mappedPreviewValue(source[mapping.source], mapping.field) }));
+    }
+    if (includeUnmapped) {
+      const extras = state.csvPreview.headers
+        .filter((header) => !mappedSources.has(header) && header !== "qiring_format_version" && source[header])
+        .map((header) => `${header}: ${source[header]}`)
+        .join(" · ");
+      row.append(createElement("td", { text: extras }));
+    }
+    return row;
+  });
+  elements.csvPreviewBody.replaceChildren(...rows);
+}
+
+function renderCsvPreviewStatus(preview) {
+  const warnings = preview.warnings.map((warning) => createElement("p", { className: "csv-preview-warning", text: warning }));
+  elements.csvImportPreview.replaceChildren(
+    createElement("strong", { text: preview.canonical ? "QiRing template structure recognized" : "CSV structure is valid" }),
+    createElement("div", { text: `${preview.row_count} data ${preview.row_count === 1 ? "row" : "rows"} · ${preview.headers.length} columns` }),
+    ...warnings
+  );
+  elements.csvImportPreview.hidden = false;
+}
+
+async function previewPlaintextCsv() {
+  if (!state.selectedCsvToken) throw new Error("Choose a CSV file first.");
+  const preview = await busy(elements.previewPlaintextCsv, () => vaultApi.previewPlaintextCsv(state.selectedCsvToken));
+  state.csvPreview = preview;
+  renderCsvPreviewStatus(preview);
+  populateCsvMapping(preview);
+}
+
+function csvMapping() {
+  const mapping = { include_unmapped_in_notes: elements.csvUnmappedToNotes.checked };
+  for (const select of elements.csvMappingForm.querySelectorAll("select[data-csv-field]")) {
+    mapping[select.dataset.csvField] = select.value || null;
+  }
+  return mapping;
+}
+
+async function importPlaintextCsv() {
+  if (!state.selectedCsvToken || !state.csvPreview) throw new Error("Validate the selected CSV first.");
+  const mapping = csvMapping();
+  if (!mapping.title) throw new Error("Map a source column to Qi Name.");
+  if (!await askConfirmation({
+    title: `Import ${state.csvPreview.row_count} Qi?`,
+    message: "Every row will be validated before the Ring changes. Imported Qi are added to the current Ring; existing Qi are not replaced or merged.",
+    confirmLabel: "Import Qi"
+  })) return;
+  let report;
+  try {
+    report = await busy(elements.importPlaintextCsv, () =>
+      vaultApi.importPlaintextCsv(state.selectedCsvToken, mapping)
+    );
+  } catch (error) {
+    try {
+      const refreshed = await vaultApi.previewPlaintextCsv(state.selectedCsvToken);
+      state.csvPreview = refreshed;
+      renderCsvPreviewStatus(refreshed);
+      populateCsvMapping(refreshed, mapping, mapping.include_unmapped_in_notes);
+    } catch {
+      // Preserve the original import error; it identifies the row that still needs repair.
+    }
+    throw error;
+  }
+  resetCsvImport();
+  await refreshItems({ refreshCatalog: true });
+  toast(`Imported ${report.imported_count} Qi from CSV.`);
+}
+
 async function refreshSnapshots() {
   const snapshots = await busy(elements.refreshSnapshots, () => vaultApi.listSnapshots());
   elements.snapshotList.replaceChildren();
@@ -1897,6 +2104,7 @@ function resetSessionUi() {
   state.draggedOrder = null;
   state.selectedBackupToken = null;
   state.backupPreviewed = false;
+  resetCsvImport();
   elements.searchInput.value = "";
   elements.tagFilter.value = "";
   renderTagFilter();
@@ -2113,6 +2321,12 @@ elements.selectBackup.addEventListener("click", runSafely(selectBackup));
 elements.previewBackup.addEventListener("click", runSafely(previewBackup));
 elements.restoreBackup.addEventListener("click", runSafely(restoreBackup));
 elements.refreshSnapshots.addEventListener("click", runSafely(refreshSnapshots));
+elements.saveCsvTemplate.addEventListener("click", runSafely(saveCsvTemplate));
+elements.exportPlaintextCsv.addEventListener("click", runSafely(exportPlaintextCsv));
+elements.selectPlaintextCsv.addEventListener("click", runSafely(selectPlaintextCsv));
+elements.previewPlaintextCsv.addEventListener("click", runSafely(previewPlaintextCsv));
+elements.csvMappingForm.addEventListener("change", renderCsvMappingPreview);
+elements.csvMappingForm.addEventListener("submit", runSafely(importPlaintextCsv, true));
 
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".menu-wrap")) closeMenu();

@@ -1,3 +1,4 @@
+use crate::interchange::{export_csv_bytes, import_inputs_from_csv, preview_csv_bytes};
 use crate::model::*;
 use crate::passwords::generate_password_value;
 use crate::totp::current_totp_code;
@@ -508,6 +509,97 @@ impl VaultService {
             .get(&item_id)
             .cloned()
             .ok_or(CoreError::ItemNotFound.into())
+    }
+
+    pub fn export_plaintext_csv(
+        &mut self,
+        path: impl AsRef<Path>,
+    ) -> anyhow::Result<PlaintextExportManifest> {
+        let path = path.as_ref();
+        if path == self.vault_path {
+            return Err(CoreError::InvalidInput("CSV path must differ from Ring path".into()).into());
+        }
+        let items = self
+            .session_mut()?
+            .doc
+            .items
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        let row_count = items.len();
+        let bytes = Zeroizing::new(export_csv_bytes(&items)?);
+        save_bytes_atomic_user_directory(path, &bytes)?;
+        Ok(PlaintextExportManifest {
+            path: path.display().to_string(),
+            row_count,
+            size_bytes: bytes.len() as u64,
+        })
+    }
+
+    pub fn preview_plaintext_csv(&mut self, path: impl AsRef<Path>) -> anyhow::Result<CsvImportPreview> {
+        self.session_mut()?;
+        let bytes = Zeroizing::new(read_bounded(path.as_ref(), 32 * 1024 * 1024)?);
+        preview_csv_bytes(&bytes)
+    }
+
+    pub fn import_plaintext_csv(
+        &mut self,
+        path: impl AsRef<Path>,
+        mapping: CsvColumnMapping,
+    ) -> anyhow::Result<CsvImportReport> {
+        let bytes = Zeroizing::new(read_bounded(path.as_ref(), 32 * 1024 * 1024)?);
+        let (inputs, warnings) = import_inputs_from_csv(&bytes, &mapping)?;
+        for (index, input) in inputs.iter().enumerate() {
+            if let Some(secret) = input.totp_secret.as_deref() {
+                crate::generate_totp_code(secret, 0).map_err(|error| {
+                    anyhow::anyhow!("CSV row {}: TOTP secret is invalid: {error}", index + 2)
+                })?;
+            }
+        }
+        let now = Utc::now();
+        let mut imported_ids = Vec::with_capacity(inputs.len());
+        {
+            let session = self.session_mut()?;
+            for input in inputs {
+                let id = Uuid::new_v4();
+                session.doc.items.insert(
+                    id,
+                    VaultItem {
+                        id,
+                        item_type: input.item_type,
+                        title: input.title,
+                        username: input.username,
+                        password: input.password,
+                        url: input.url,
+                        notes: input.notes,
+                        tags: input.tags,
+                        folder: input.folder,
+                        icon_data_url: None,
+                        security_questions: input.security_questions,
+                        custom_fields: input.custom_fields,
+                        totp_secret: input.totp_secret,
+                        password_history: Vec::new(),
+                        created_at: now,
+                        updated_at: now,
+                    },
+                );
+                imported_ids.push(id);
+            }
+        }
+        if let Err(error) = self.flush() {
+            if let Some(session) = self.session.as_mut() {
+                for id in &imported_ids {
+                    if let Some(mut item) = session.doc.items.remove(id) {
+                        zeroize_item(&mut item);
+                    }
+                }
+            }
+            return Err(error);
+        }
+        Ok(CsvImportReport {
+            imported_count: imported_ids.len(),
+            warnings,
+        })
     }
 
     pub fn get_totp_code(&mut self, item_id: Uuid) -> anyhow::Result<TotpCode> {
@@ -1267,6 +1359,64 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn plaintext_csv_export_preview_import_persists_structured_fields() {
+        let (dir, mut service) = test_service();
+        service
+            .create_vault(MASTER, AppSettings::default())
+            .expect("create");
+        service.unlock_vault_master(MASTER).expect("unlock");
+        let mut input = login("Structured export", "+formula-like-password");
+        input.tags = vec!["home,personal".into(), "email".into()];
+        input.security_questions = vec![SecurityQuestion {
+            question: "First school?".into(),
+            answer: "North".into(),
+        }];
+        input.custom_fields = vec![CustomField {
+            label: "PIN".into(),
+            value: "1234".into(),
+            concealed: true,
+        }];
+        service.add_item(input).expect("add");
+
+        let path = dir.path().join("ring.csv");
+        let manifest = service.export_plaintext_csv(&path).expect("export CSV");
+        assert_eq!(manifest.row_count, 1);
+        let preview = service.preview_plaintext_csv(&path).expect("preview CSV");
+        assert!(preview.canonical);
+        let report = service
+            .import_plaintext_csv(&path, preview.suggested_mapping)
+            .expect("import CSV");
+        assert_eq!(report.imported_count, 1);
+
+        let summaries = service.list_items(ListFilter::default()).expect("list");
+        assert_eq!(summaries.len(), 2);
+        let imported = summaries
+            .iter()
+            .find_map(|summary| {
+                let item = service.get_item(summary.id).expect("get");
+                (item.password.as_deref() == Some("+formula-like-password")).then_some(item)
+            })
+            .expect("imported item");
+        assert_eq!(imported.tags, ["home,personal", "email"]);
+        assert_eq!(imported.security_questions[0].answer, "North");
+        assert!(imported.custom_fields[0].concealed);
+
+        let invalid_totp_path = dir.path().join("invalid-totp.csv");
+        fs::write(
+            &invalid_totp_path,
+            "Name,TOTP secret\nBroken TOTP,NOT-VALID-BASE32!\n",
+        )
+        .expect("write invalid TOTP CSV");
+        let preview = service
+            .preview_plaintext_csv(&invalid_totp_path)
+            .expect("preview invalid TOTP CSV");
+        let error = service
+            .import_plaintext_csv(&invalid_totp_path, preview.suggested_mapping)
+            .expect_err("reject invalid TOTP");
+        assert!(error.to_string().contains("CSV row 2: TOTP secret is invalid"));
     }
 
     #[test]

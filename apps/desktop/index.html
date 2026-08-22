@@ -208,12 +208,64 @@
           </section>
 
           <section id="backupsView" class="view module-view" hidden aria-labelledby="viewTitle">
-            <div class="module-intro"><p>Manual exports add a second passphrase layer. Automatic snapshots remain protected by Ring encryption.</p></div>
+            <div class="module-intro"><p>Encrypted backups are the safe default. Plaintext CSV transfer is available for spreadsheets, migration, printing, and offline cold storage.</p></div>
+            <div class="section-heading"><h2>Encrypted backups</h2></div>
             <div class="settings-grid">
               <section class="settings-section"><h2>Manual export</h2><div class="field"><label for="backupPassphrase">Backup passphrase</label><div class="inline-control"><input id="backupPassphrase" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /><button id="toggleBackupPassphrase" class="secondary" type="button" aria-label="Show export backup passphrase" aria-pressed="false" data-secret-label="export backup passphrase" data-icon="eye">Show</button></div></div><button id="exportBackup" class="primary section-action" type="button" data-icon="download">Choose destination and export</button></section>
               <section class="settings-section"><h2>Restore preview</h2><button id="selectBackup" class="secondary" type="button" data-icon="file">Choose encrypted backup</button><p id="selectedBackupPath" class="path-display">No backup selected.</p><div class="field"><label for="restorePassphrase">Backup passphrase</label><div class="inline-control"><input id="restorePassphrase" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /><button id="toggleRestorePassphrase" class="secondary" type="button" aria-label="Show restore backup passphrase" aria-pressed="false" data-secret-label="restore backup passphrase" data-icon="eye">Show</button></div></div><div class="button-row"><button id="previewBackup" class="secondary" type="button" data-icon="eye">Preview</button><button id="restoreBackup" class="danger" type="button" data-icon="undo" disabled>Restore previewed backup</button></div><div id="backupPreview" class="preview-box" hidden></div></section>
             </div>
             <section class="snapshot-section"><div class="section-heading"><h2>Automatic snapshots</h2><button id="refreshSnapshots" class="secondary compact" type="button" data-icon="refresh">Refresh</button></div><div id="snapshotList" class="snapshot-list"><p class="empty-message">Configure automatic snapshots in Settings.</p></div></section>
+            <section class="plaintext-transfer">
+              <div class="section-heading"><h2>Plaintext CSV transfer</h2><span class="plaintext-badge">UNENCRYPTED</span></div>
+              <p class="plaintext-warning"><strong>Anyone who can open an exported CSV can read every included password and secret.</strong> Store it offline, print only to a trusted printer, and securely delete it when finished.</p>
+              <div class="settings-grid">
+                <section class="settings-section">
+                  <h3>Export or start from a template</h3>
+                  <p>The UTF-8 CSV opens in Excel, LibreOffice, and Numbers. Repeated fields are stored as JSON arrays inside safely quoted cells.</p>
+                  <div class="csv-format-reference">
+                    <strong>Supported CSV value formats</strong>
+                    <p>Only Qi Name is required. When these optional columns are present, format their values as shown.</p>
+                    <dl>
+                      <div><dt>qiring_format_version</dt><dd><code>1</code> for a QiRing-format CSV</dd></div>
+                      <div><dt>item_type</dt><dd><code>login</code> or <code>secure_note</code>; blank defaults to login</dd></div>
+                      <div><dt>tags</dt><dd><code>food, drink, rewards</code>; surrounding spaces are trimmed</dd></div>
+                      <div><dt>security_questions</dt><dd><code>[{"question":"First school?","answer":"North"}]</code></dd></div>
+                      <div><dt>custom_fields</dt><dd><code>[{"label":"PIN","value":"1234","concealed":true}]</code></dd></div>
+                    </dl>
+                    <small>Use <code>[]</code> when an included structured field has no values. Exported tags use a JSON array so a tag can intentionally contain a comma. The template supplies exact column names; spreadsheet software handles the outer CSV quoting.</small>
+                  </div>
+                  <div class="button-row"><button id="saveCsvTemplate" class="secondary" type="button" data-icon="file">Save import template</button><button id="exportPlaintextCsv" class="danger" type="button" data-icon="download">Export plaintext CSV</button></div>
+                </section>
+                <section class="settings-section">
+                  <h3>Import with validation</h3>
+                  <div class="button-row"><button id="selectPlaintextCsv" class="secondary" type="button" data-icon="file">Choose CSV</button><button id="previewPlaintextCsv" class="secondary" type="button" data-icon="eye" disabled>Validate and map</button></div>
+                  <p id="selectedPlaintextCsvPath" class="path-display">No CSV selected.</p>
+                  <div id="csvImportPreview" class="preview-box" hidden></div>
+                </section>
+              </div>
+              <form id="csvMappingForm" class="csv-mapping-panel" hidden>
+                <div class="section-heading"><h3>Match spreadsheet columns to Qi fields</h3><span id="csvRowCount" class="count-badge">0 rows</span></div>
+                <div class="csv-mapping-grid">
+                  <label><span>Qi Name column <strong>required</strong></span><select data-csv-field="title" required></select></label>
+                  <label>Item type column<select data-csv-field="item_type"></select></label>
+                  <label>Username column<select data-csv-field="username"></select></label>
+                  <label>Password column<select data-csv-field="password"></select></label>
+                  <label>URL column<select data-csv-field="url"></select></label>
+                  <label>Notes column<select data-csv-field="notes"></select></label>
+                  <label>Tags column<select data-csv-field="tags"></select></label>
+                  <label>Category column<select data-csv-field="category"></select></label>
+                  <label>Security questions JSON column<select data-csv-field="security_questions"></select></label>
+                  <label>Custom fields JSON column<select data-csv-field="custom_fields"></select></label>
+                  <label>TOTP secret column<select data-csv-field="totp_secret"></select></label>
+                </div>
+                <label class="check-row"><input id="csvUnmappedToNotes" type="checkbox" checked /><span>Append every non-empty unmapped column to Notes</span></label>
+                <section class="csv-data-preview" aria-labelledby="csvDataPreviewTitle">
+                  <div class="section-heading"><div><h4 id="csvDataPreviewTitle">Mapped import preview</h4><p>First five rows. Passwords, TOTP secrets, questions, and custom-field values remain masked.</p></div></div>
+                  <div class="csv-preview-table-wrap"><table><thead id="csvPreviewHead"></thead><tbody id="csvPreviewBody"></tbody></table></div>
+                </section>
+                <div class="button-row"><button id="importPlaintextCsv" class="danger" type="submit" data-icon="upload">Import validated rows</button></div>
+              </form>
+            </section>
           </section>
 
           <section id="settingsView" class="view module-view" hidden aria-labelledby="viewTitle">
@@ -251,7 +303,7 @@
                 <button type="button" class="help-nav-link" data-target="help-vault">Ring &amp; Qi editor</button>
                 <button type="button" class="help-nav-link" data-target="help-profiles">Password profiles</button>
                 <button type="button" class="help-nav-link" data-target="help-health">Ring health</button>
-                <button type="button" class="help-nav-link" data-target="help-backups">Encrypted backups</button>
+                <button type="button" class="help-nav-link" data-target="help-backups">Backups &amp; CSV transfer</button>
                 <button type="button" class="help-nav-link" data-target="help-settings">Settings</button>
                 <button type="button" class="help-nav-link" data-target="help-shortcuts">Navigation &amp; shortcuts</button>
               </nav>
@@ -349,7 +401,7 @@
                   <h4>Qi editor — other sections</h4>
                   <dl class="help-definitions">
                     <div><dt>Notes</dt><dd>Free-text secure content, encrypted with the rest of the Qi. Up to 100,000 characters.</dd></div>
-                    <div><dt>Security questions</dt><dd>Optional question/answer pairs for sites that require them. <strong>Add question</strong> appends a new blank pair; each answer has its own copy button.</dd></div>
+                    <div><dt>Security questions</dt><dd>Optional question/answer pairs for sites that require them. <strong>Add question</strong> appends a new blank pair; each answer has its own show/hide and copy buttons.</dd></div>
                     <div><dt>Custom fields</dt><dd>Add labeled values such as PINs, membership numbers, account IDs, or security codes. Secret fields stay masked in the editor, and all values are encrypted with the rest of the Qi. Custom-field labels and values are also included in Ring search.</dd></div>
                     <div><dt>Password history</dt><dd>Shows previous passwords this Qi has used, kept automatically so you can recover an older value if a change was a mistake.</dd></div>
                   </dl>
@@ -383,7 +435,7 @@
                 </article>
 
                 <article id="help-backups" class="help-article">
-                  <h3>Encrypted backups</h3>
+                  <h3>Backups &amp; CSV transfer</h3>
                   <dl class="help-definitions">
                     <div><dt>Backup passphrase (export)</dt><dd>A separate passphrase — distinct from your master password — that protects the exported backup file. Keep it somewhere other than alongside the backup itself. Show or hide it with the adjacent visibility button.</dd></div>
                     <div><dt>Choose destination and export</dt><dd>Opens a save dialog and writes a portable encrypted backup, protected by the passphrase above, to the chosen location.</dd></div>
@@ -394,6 +446,13 @@
                     <div><dt>Automatic snapshots</dt><dd>Local safety copies of the Ring, still protected by the Ring's own encryption (not a separate passphrase), created automatically when enabled in Settings.</dd></div>
                     <div><dt>Refresh</dt><dd>Reloads the list of available automatic snapshots from the configured backup directory.</dd></div>
                     <div><dt>Restore (snapshot)</dt><dd>Replaces the current Ring with that snapshot and locks QiRing. QiRing refuses to restore a snapshot that does not belong to this Ring.</dd></div>
+                    <div><dt>Save import template</dt><dd>Creates a header-only, Excel-compatible UTF-8 CSV with QiRing's canonical columns. Tags, security questions, and custom fields use JSON arrays inside CSV cells so repeated values remain structured.</dd></div>
+                    <div><dt>Export plaintext CSV</dt><dd>Exports every Qi without encryption for spreadsheet use, trusted printing, migration, or offline cold storage. QiRing warns for confirmation first. The export excludes icons and password history, but includes current passwords, TOTP secrets, answers, custom fields, and notes.</dd></div>
+                    <div><dt>Choose CSV</dt><dd>Selects a UTF-8 CSV file through the system dialog. Native XLSX files are not accepted; save an Excel workbook as CSV UTF-8 first.</dd></div>
+                    <div><dt>Validate and map</dt><dd>Checks quoting, encoding, headers, row widths, size limits, and row count before showing a source-column mapping. Familiar headers are suggested automatically, but Qi Name must always be mapped.</dd></div>
+                    <div><dt>Append unmapped columns to Notes</dt><dd>Preserves non-empty values that do not fit QiRing's model as labeled lines in Notes instead of silently dropping them.</dd></div>
+                    <div><dt>Structured columns</dt><dd>Tags accept either comma-separated text or a JSON string array. Security questions require objects with question and answer. Custom fields require label, value, and optional concealed fields. Download the template or export existing Qi to see the exact format.</dd></div>
+                    <div><dt>Import validated rows</dt><dd>Validates every mapped row before changing the Ring, then adds all rows in one operation. It never replaces or merges existing Qi; any invalid row aborts the entire import.</dd></div>
                   </dl>
                 </article>
 
