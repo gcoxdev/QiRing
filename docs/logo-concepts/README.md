@@ -28,7 +28,7 @@ Concentric broken arcs orbit a protected center while the outer break becomes a 
 
 ## Recommendation (superseded — see 2026-08-09 round below)
 
-Concept 1 was the first adopted application mark, replaced by Concept 1C on 2026-08-09. Concepts 2 and 3 remain exploration only.
+Concept 1 was the first adopted application mark. Its successive SVG refinements culminate in the current Concept 1F mark below. Concepts 2 and 3 remain exploration only.
 
 **Generation method:** OpenAI built-in image generation tool.  
 **Files:** 1254 x 1254 PNG, RGB.
@@ -55,11 +55,17 @@ Same ring, keyhole, and key-tail-with-teeth geometry as 1B, with one deliberate 
 
 Same geometry as 1C, refined: the whole ring-and-key mark is scaled down and repositioned slightly within the canvas, giving more margin from the rounded-square edges at both large and small sizes. Adopted briefly, then replaced by 1E below.
 
-### Concept 1E — Q keyhole with vintage key teeth (adopted)
+### Concept 1E — Q keyhole with vintage key teeth (superseded)
 
 ![Concept 1E](./qiring-concept-1e-key-teeth.svg)
 
-**This is now the adopted application mark.** Same geometry as 1D, scaled back up (~25% larger) so the mark fills more of the canvas — bolder and more confident at both large and small (favicon/taskbar) sizes than 1D's smaller margin. The production source is [`qiring-concept-1e-key-teeth.svg`](./qiring-concept-1e-key-teeth.svg); the same geometry is bundled in the frontend at `apps/desktop/src/assets/qiring-mark.svg`, and the complete Tauri desktop/mobile icon set was regenerated from it.
+Same geometry as 1D, scaled back up (~25% larger) so the mark fills more of the canvas — bolder and more confident at both large and small (favicon/taskbar) sizes than 1D's smaller margin. Adopted briefly, then replaced by Concept 1F below.
+
+### Concept 1F — Q keyhole with two retro key teeth (adopted)
+
+![Concept 1F](./qiring-concept-1f-retro-key-teeth.svg)
+
+**This is now the adopted application mark.** Concept 1E with only the key bit changed: the modern staircase notches are replaced by a straight skeleton-key shaft with two distinct rectangular wards projecting from one side. The shaft and wards match the ring's visual weight, while hard square corners give the bit a more antique iron-key silhouette. The production source is [`qiring-concept-1f-retro-key-teeth.svg`](./qiring-concept-1f-retro-key-teeth.svg); the same geometry is bundled in the frontend at `apps/desktop/src/assets/qiring-mark.svg`, and the complete Tauri desktop/mobile icon set is generated from it.
 
 ### Concept 4 — Keyring
 
