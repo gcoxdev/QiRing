@@ -1475,6 +1475,7 @@ kbd {
 
 .help-nav {
   display: grid;
+  grid-auto-rows: max-content;
   align-content: start;
   gap: 2px;
   overflow: auto;
@@ -1482,6 +1483,8 @@ kbd {
 }
 
 .help-nav-link {
+  height: fit-content;
+  white-space: normal;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text);

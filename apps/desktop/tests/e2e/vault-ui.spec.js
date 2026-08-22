@@ -564,6 +564,24 @@ test("Help documents every module, setting, and keyboard route", async ({ page }
   for (const heading of ["Getting started", "Ring storage & portable mode", "Create, unlock & recovery", "Ring & Qi editor", "Password profiles", "Ring health", "Encrypted backups", "Settings", "Navigation & shortcuts"]) {
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
+  await page.setViewportSize({ width: 700, height: 700 });
+  const wrappedStorageTopic = page.getByRole("button", { name: "Ring storage & portable mode" });
+  const readStorageTopicBounds = () => wrappedStorageTopic.evaluate((button) => ({
+    clientHeight: button.clientHeight,
+    scrollHeight: button.scrollHeight,
+    renderedHeight: button.getBoundingClientRect().height
+  }));
+  await expect.poll(async () => (await readStorageTopicBounds()).renderedHeight).toBeGreaterThan(38);
+  let storageTopicBounds = await readStorageTopicBounds();
+  expect(storageTopicBounds.scrollHeight).toBeLessThanOrEqual(storageTopicBounds.clientHeight);
+
+  await page.setViewportSize({ width: 1280, height: 700 });
+  await expect.poll(async () => (await readStorageTopicBounds()).renderedHeight).toBe(38);
+
+  await page.setViewportSize({ width: 700, height: 700 });
+  await expect.poll(async () => (await readStorageTopicBounds()).renderedHeight).toBeGreaterThan(38);
+  storageTopicBounds = await readStorageTopicBounds();
+  expect(storageTopicBounds.scrollHeight).toBeLessThanOrEqual(storageTopicBounds.clientHeight);
   for (const setting of ["Auto-lock minutes", "Clipboard clear seconds", "Theme", "Button display", "Backup directory", "Rotate master password", "Replace recovery key"]) {
     await expect(page.locator("#helpView dt", { hasText: setting })).toBeVisible();
   }

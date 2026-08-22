@@ -1562,6 +1562,27 @@ function initHelpNav() {
   const links = [...elements.helpNav.querySelectorAll(".help-nav-link")];
   const articles = [...elements.helpArticles.querySelectorAll(".help-article")];
 
+  let heightSyncFrame = 0;
+  const syncLinkHeights = () => {
+    window.cancelAnimationFrame(heightSyncFrame);
+    heightSyncFrame = window.requestAnimationFrame(() => {
+      for (const link of links) link.style.removeProperty("height");
+      void elements.helpNav.offsetWidth;
+      for (const link of links) {
+        if (link.hidden) continue;
+        const style = window.getComputedStyle(link);
+        const borderHeight = Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.borderBottomWidth);
+        const minHeight = Number.parseFloat(style.minHeight) || 0;
+        link.style.height = `${Math.max(minHeight, Math.ceil(link.scrollHeight + borderHeight))}px`;
+      }
+    });
+  };
+
+  const resizeObserver = new ResizeObserver(syncLinkHeights);
+  resizeObserver.observe(elements.helpNav);
+  window.addEventListener("resize", syncLinkHeights);
+  syncLinkHeights();
+
   const setActiveLink = (id) => {
     for (const link of links) link.classList.toggle("active", link.dataset.target === id);
   };
@@ -1595,6 +1616,8 @@ function initHelpNav() {
     applyHelpSearch();
     elements.helpSearch.focus();
   });
+
+  elements.helpNav.addEventListener("help-filter-updated", syncLinkHeights);
 }
 
 function applyHelpSearch() {
@@ -1628,6 +1651,7 @@ function applyHelpSearch() {
   if (query && firstMatch) {
     for (const link of links) link.classList.toggle("active", link.dataset.target === firstMatch);
   }
+  elements.helpNav.dispatchEvent(new Event("help-filter-updated"));
 }
 
 async function runHealthAnalysis() {

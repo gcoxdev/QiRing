@@ -111,13 +111,19 @@ Linux also has a repository launcher that runs the Rust desktop application with
 ./scripts/run-desktop.sh
 ```
 
-The Linux launcher sets `WEBKIT_DISABLE_DMABUF_RENDERER=1`, `WEBKIT_DISABLE_COMPOSITING_MODE=1`, and `LIBGL_ALWAYS_SOFTWARE=1`. Its default `auto` backend respects the current desktop session. Wayland restores the saved size and maximized state, but the compositor controls absolute placement. To restore the exact saved position, launch through X11/XWayland:
+The Linux launcher sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` to avoid known WebKitGTK/GBM buffer failures while leaving compositing enabled for correct repaint behavior. Its default `auto` backend respects the current desktop session. Wayland restores the saved size and maximized state, but the compositor controls absolute placement. To restore the exact saved position, launch through X11/XWayland:
 
 ```bash
 ./scripts/run-desktop.sh --x11
 ```
 
 Use `--wayland` to explicitly select Wayland, or set `QIRING_WINDOW_BACKEND=auto|x11|wayland`. When X11 is requested and `DISPLAY` is unset, the launcher probes `:0`, `:1`, and `:2`. The backend flags are consumed by the launcher and are not passed to Cargo.
+
+If a Linux graphics driver still produces a black WebView, opt into the slower software-rendering fallback:
+
+```bash
+QIRING_SOFTWARE_RENDERING=1 ./scripts/run-desktop.sh
+```
 
 ### Build the frontend only
 
