@@ -61,11 +61,17 @@ Same geometry as 1C, refined: the whole ring-and-key mark is scaled down and rep
 
 Same geometry as 1D, scaled back up (~25% larger) so the mark fills more of the canvas — bolder and more confident at both large and small (favicon/taskbar) sizes than 1D's smaller margin. Adopted briefly, then replaced by Concept 1F below.
 
-### Concept 1F — Q keyhole with two retro key teeth (adopted)
+### Concept 1F — Q keyhole with two retro key teeth (superseded)
 
 ![Concept 1F](./qiring-concept-1f-retro-key-teeth.svg)
 
-**This is now the adopted application mark.** Concept 1E with only the key bit changed: the modern staircase notches are replaced by a straight skeleton-key shaft with two distinct rectangular wards projecting from one side. The shaft and wards match the ring's visual weight, while hard square corners give the bit a more antique iron-key silhouette. The production source is [`qiring-concept-1f-retro-key-teeth.svg`](./qiring-concept-1f-retro-key-teeth.svg); the same geometry is bundled in the frontend at `apps/desktop/src/assets/qiring-mark.svg`, and the complete Tauri desktop/mobile icon set is generated from it.
+Concept 1E with only the key bit changed: the modern staircase notches are replaced by a straight skeleton-key shaft with two rectangular wards projecting from one side. Adopted briefly, then refined in Concept 1F v2 below.
+
+### Concept 1F v2 — Q keyhole with offset retro key teeth (adopted)
+
+![Concept 1F v2](./qiring-concept-1f-retro-key-teeth-v2.svg)
+
+**This is now the adopted application mark.** The two square wards are offset along opposite edges of the shaft, creating a clearer skeleton-key silhouette while retaining Concept 1F's ring weight, hard corners, palette, and small-size legibility. The production source is [`qiring-concept-1f-retro-key-teeth-v2.svg`](./qiring-concept-1f-retro-key-teeth-v2.svg); normalized matching geometry is bundled at `apps/desktop/src/assets/qiring-mark.svg`, and the complete Tauri desktop/mobile icon set is generated from it.
 
 ### Concept 4 — Keyring
 
