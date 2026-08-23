@@ -50,6 +50,9 @@ test.beforeEach(async ({ page }) => {
 test("Ring creation requires a verified recovery ceremony and clears the key", async ({ page }) => {
   await expect(page.locator("#createScreen .section-code")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Initialize encrypted Ring" })).toHaveAttribute("data-icon", "ring");
+  await page.getByRole("button", { name: "Show master password" }).click();
+  await expect(page.locator("#createMaster")).toHaveAttribute("type", "text");
+  await page.getByRole("button", { name: "Hide master password" }).click();
   await page.locator("#createMaster").fill("correct horse battery staple");
   await page.locator("#createConfirm").fill("correct horse battery staple");
   await page.getByRole("button", { name: "Initialize encrypted Ring" }).click();
@@ -83,6 +86,17 @@ test("Ring creation requires a verified recovery ceremony and clears the key", a
   await expect(page.locator("#recoveryKeyOutput")).toHaveText("");
   await expect(page.locator("#recoveryQrPanel")).toBeHidden();
   await expect(page.locator("#recoveryQr")).toHaveJSProperty("width", 1);
+  await page.getByRole("tab", { name: "Recovery key" }).click();
+  await expect(page.locator("#recoveryUnlockPanel button[type='submit']")).toHaveAttribute("data-icon", "recovery");
+  for (const [label, selector] of [
+    ["recovery key", "#recoveryKey"],
+    ["new master password", "#recoveryMaster"],
+    ["confirm new master password", "#recoveryConfirm"]
+  ]) {
+    await page.getByRole("button", { name: `Show ${label}` }).click();
+    await expect(page.locator(selector)).toHaveAttribute("type", "text");
+    await page.getByRole("button", { name: `Hide ${label}` }).click();
+  }
 });
 
 test("recovery printing uses a named white sheet containing the QR code and text key", async ({ page }) => {

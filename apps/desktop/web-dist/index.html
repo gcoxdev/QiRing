@@ -7,8 +7,8 @@
     <meta name="theme-color" content="#0a0e0d" />
     <link rel="icon" href="/assets/qiring-mark-B3vbJXI1.svg" type="image/svg+xml" />
     <title>QiRing</title>
-    <script type="module" crossorigin src="/assets/index-BNaXMp1v.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DrwjIUee.css">
+    <script type="module" crossorigin src="/assets/index-CPiiJxBQ.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B9zBhRnV.css">
   </head>
   <body>
     <div id="app" class="app-frame">
@@ -23,9 +23,9 @@
           <p>Use a unique master password with at least 12 characters. It never leaves this device.</p>
           <form id="createForm" class="stack-form">
             <label for="createMaster">Master password</label>
-            <input id="createMaster" name="masterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
+            <div class="secret-control"><input id="createMaster" name="masterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required /><button id="toggleCreateMaster" class="secret-toggle" type="button" aria-label="Show master password" aria-pressed="false" data-secret-label="master password" data-icon="eye">Show</button></div>
             <label for="createConfirm">Confirm master password</label>
-            <input id="createConfirm" name="confirmPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
+            <div class="secret-control"><input id="createConfirm" name="confirmPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required /><button id="toggleCreateConfirm" class="secret-toggle" type="button" aria-label="Show confirm master password" aria-pressed="false" data-secret-label="confirm master password" data-icon="eye">Show</button></div>
             <button class="primary full" type="submit" data-icon="ring">Initialize encrypted Ring</button>
           </form>
         </section>
@@ -38,17 +38,17 @@
           </div>
           <form id="masterUnlockPanel" class="stack-form" role="tabpanel" aria-labelledby="masterTab">
             <label for="unlockMaster">Master password</label>
-            <input id="unlockMaster" name="masterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" required autofocus />
+            <div class="secret-control"><input id="unlockMaster" name="masterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" required autofocus /><button id="toggleUnlockMaster" class="secret-toggle" type="button" aria-label="Show master password" aria-pressed="false" data-secret-label="master password" data-icon="eye">Show</button></div>
             <button class="primary full" type="submit" data-busy-label="Unlocking…" data-icon="lock">Unlock</button>
           </form>
           <form id="recoveryUnlockPanel" class="stack-form" role="tabpanel" aria-labelledby="recoveryTab" hidden>
             <label for="recoveryKey">Recovery key</label>
-            <input id="recoveryKey" name="recoveryKey" type="password" maxlength="256" autocomplete="off" required />
+            <div class="secret-control"><input id="recoveryKey" name="recoveryKey" type="password" maxlength="256" autocomplete="off" required /><button id="toggleRecoveryKey" class="secret-toggle" type="button" aria-label="Show recovery key" aria-pressed="false" data-secret-label="recovery key" data-icon="eye">Show</button></div>
             <label for="recoveryMaster">New master password</label>
-            <input id="recoveryMaster" name="newMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
+            <div class="secret-control"><input id="recoveryMaster" name="newMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required /><button id="toggleRecoveryMaster" class="secret-toggle" type="button" aria-label="Show new master password" aria-pressed="false" data-secret-label="new master password" data-icon="eye">Show</button></div>
             <label for="recoveryConfirm">Confirm new master password</label>
-            <input id="recoveryConfirm" name="confirmNewMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required />
-            <button class="primary full" type="submit" data-busy-label="Recovering…" data-icon="key">Recover and rotate credentials</button>
+            <div class="secret-control"><input id="recoveryConfirm" name="confirmNewMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required /><button id="toggleRecoveryConfirm" class="secret-toggle" type="button" aria-label="Show confirm new master password" aria-pressed="false" data-secret-label="confirm new master password" data-icon="eye">Show</button></div>
+            <button class="primary full" type="submit" data-busy-label="Recovering…" data-icon="recovery">Recover and rotate credentials</button>
           </form>
         </section>
       </main>
@@ -60,7 +60,7 @@
             <strong>QiRing</strong>
           </button>
           <div class="header-location">
-            <h1 id="viewTitle" tabindex="-1">Ring</h1>
+            <h1 id="viewTitle" tabindex="-1"><span id="viewTitleIcon" class="view-title-icon" aria-hidden="true"></span><span id="viewTitleText">Ring</span></h1>
           </div>
           <div class="header-controls">
             <div id="contextActions" class="context-actions" role="group" aria-label="Page actions">
@@ -72,7 +72,7 @@
               <button id="menuButton" class="icon-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Open navigation menu" data-icon="menu" data-label="Menu">MENU</button>
               <nav id="appMenu" class="app-menu" aria-label="Ring navigation" hidden>
                 <button type="button" role="menuitem" data-view="qiring" data-icon="ring" data-label="Ring">Ring <kbd data-shortcut="1">Ctrl+1</kbd></button>
-                <button type="button" role="menuitem" data-view="profiles" data-icon="key" data-label="Password Profiles">Password Profiles <kbd data-shortcut="2">Ctrl+2</kbd></button>
+                <button type="button" role="menuitem" data-view="profiles" data-icon="profile" data-label="Password Profiles">Password Profiles <kbd data-shortcut="2">Ctrl+2</kbd></button>
                 <button type="button" role="menuitem" data-view="health" data-icon="shield" data-label="Ring Health">Ring Health <kbd data-shortcut="3">Ctrl+3</kbd></button>
                 <button type="button" role="menuitem" data-view="backups" data-icon="backup" data-label="Backups">Backups <kbd data-shortcut="4">Ctrl+4</kbd></button>
                 <button type="button" role="menuitem" data-view="settings" data-icon="settings" data-label="Settings">Settings <kbd data-shortcut="5">Ctrl+5</kbd></button>
@@ -136,14 +136,14 @@
                   <div class="field"><label for="itemUrl">Website</label><div class="inline-control"><input id="itemUrl" type="url" maxlength="4096" placeholder="https://example.com/…" /><button id="openUrlButton" class="secondary" type="button" data-icon="external">Open</button></div></div>
                   <div class="field-grid two credential-grid">
                     <div class="field"><label for="itemUsername">Username</label><div class="inline-control"><input id="itemUsername" maxlength="4096" autocomplete="off" /><button id="copyUsername" class="secondary" type="button" data-icon="copy">Copy</button></div></div>
-                    <div class="field"><label for="itemPassword">Password</label><div class="inline-control"><input id="itemPassword" type="password" maxlength="4096" autocomplete="off" /><button id="togglePassword" class="secondary" type="button" aria-pressed="false" data-icon="eye">Show</button><button id="copyPassword" class="secondary" type="button" data-icon="copy">Copy</button></div><div id="passwordStrength" class="password-strength" data-score="0"><div id="passwordStrengthMeter" class="password-strength-meter" role="meter" aria-label="Password strength" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0"><span></span></div><small>Strength <strong id="passwordStrengthLabel" aria-live="polite">No password</strong></small></div></div>
+                    <div class="field"><label for="itemPassword">Password</label><div class="inline-control"><div class="secret-control"><input id="itemPassword" type="password" maxlength="4096" autocomplete="off" /><button id="togglePassword" class="secret-toggle" type="button" aria-label="Show password" aria-pressed="false" data-secret-label="password" data-icon="eye">Show</button></div><button id="copyPassword" class="secondary" type="button" data-icon="copy">Copy</button></div><div id="passwordStrength" class="password-strength" data-score="0"><div id="passwordStrengthMeter" class="password-strength-meter" role="meter" aria-label="Password strength" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0"><span></span></div><small>Strength <strong id="passwordStrengthLabel" aria-live="polite">No password</strong></small></div></div>
                   </div>
                   <div class="generator-strip">
                     <div class="field"><label for="profileSelect">Password profile</label><select id="profileSelect"></select></div>
                     <button id="generatePassword" class="primary" type="button" data-icon="sparkle">Generate password</button>
                   </div>
                   <div class="totp-stack">
-                    <div class="field"><label for="itemTotpSecret">TOTP secret <span>Base32</span></label><input id="itemTotpSecret" type="password" maxlength="1024" autocomplete="off" /></div>
+                    <div class="field"><label for="itemTotpSecret">TOTP secret <span>Base32</span></label><div class="secret-control"><input id="itemTotpSecret" type="password" maxlength="1024" autocomplete="off" /><button id="toggleTotpSecret" class="secret-toggle" type="button" aria-label="Show TOTP secret" aria-pressed="false" data-secret-label="TOTP secret" data-icon="eye">Show</button></div></div>
                     <div class="totp-display"><span>ONE-TIME CODE</span><strong id="totpCode" aria-live="polite">— — — — — —</strong><button id="refreshTotp" class="secondary" type="button" data-icon="clock">Show current code</button><small id="totpRemaining">Uses device time; verify automatic time if a code is rejected.</small></div>
                   </div>
                 </section>
@@ -212,8 +212,8 @@
             <div class="module-intro"><p>Encrypted backups are the safe default. Plaintext CSV transfer is available for spreadsheets, migration, printing, and offline cold storage.</p></div>
             <div class="section-heading"><h2>Encrypted backups</h2></div>
             <div class="settings-grid">
-              <section class="settings-section"><h2>Manual export</h2><div class="field"><label for="backupPassphrase">Backup passphrase</label><div class="inline-control"><input id="backupPassphrase" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /><button id="toggleBackupPassphrase" class="secondary" type="button" aria-label="Show export backup passphrase" aria-pressed="false" data-secret-label="export backup passphrase" data-icon="eye">Show</button></div></div><button id="exportBackup" class="primary section-action" type="button" data-icon="download">Choose destination and export</button></section>
-              <section class="settings-section"><h2>Restore preview</h2><button id="selectBackup" class="secondary" type="button" data-icon="file">Choose encrypted backup</button><p id="selectedBackupPath" class="path-display">No backup selected.</p><div class="field"><label for="restorePassphrase">Backup passphrase</label><div class="inline-control"><input id="restorePassphrase" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /><button id="toggleRestorePassphrase" class="secondary" type="button" aria-label="Show restore backup passphrase" aria-pressed="false" data-secret-label="restore backup passphrase" data-icon="eye">Show</button></div></div><div class="button-row"><button id="previewBackup" class="secondary" type="button" data-icon="eye">Preview</button><button id="restoreBackup" class="danger" type="button" data-icon="undo" disabled>Restore previewed backup</button></div><div id="backupPreview" class="preview-box" hidden></div></section>
+              <section class="settings-section"><h2>Manual export</h2><div class="field"><label for="backupPassphrase">Backup passphrase</label><div class="secret-control"><input id="backupPassphrase" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /><button id="toggleBackupPassphrase" class="secret-toggle" type="button" aria-label="Show export backup passphrase" aria-pressed="false" data-secret-label="export backup passphrase" data-icon="eye">Show</button></div></div><button id="exportBackup" class="primary section-action" type="button" data-icon="download">Choose destination and export</button></section>
+              <section class="settings-section"><h2>Restore preview</h2><button id="selectBackup" class="secondary" type="button" data-icon="file">Choose encrypted backup</button><p id="selectedBackupPath" class="path-display">No backup selected.</p><div class="field"><label for="restorePassphrase">Backup passphrase</label><div class="secret-control"><input id="restorePassphrase" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /><button id="toggleRestorePassphrase" class="secret-toggle" type="button" aria-label="Show restore backup passphrase" aria-pressed="false" data-secret-label="restore backup passphrase" data-icon="eye">Show</button></div></div><div class="button-row"><button id="previewBackup" class="secondary" type="button" data-icon="eye">Preview</button><button id="restoreBackup" class="danger" type="button" data-icon="undo" disabled>Restore previewed backup</button></div><div id="backupPreview" class="preview-box" hidden></div></section>
             </div>
             <section class="snapshot-section"><div class="section-heading"><h2>Automatic snapshots</h2><button id="refreshSnapshots" class="secondary compact" type="button" data-icon="refresh">Refresh</button></div><div id="snapshotList" class="snapshot-list"><p class="empty-message">Configure automatic snapshots in Settings.</p></div></section>
             <section class="plaintext-transfer">
@@ -276,16 +276,16 @@
               <section class="settings-section"><h2>Automatic snapshots</h2><label class="check-row"><input id="automaticBackups" type="checkbox" /><span>Create a snapshot after Ring changes</span></label><label class="check-row"><input id="includeSettings" type="checkbox" /><span>Include encrypted settings in manual exports</span></label><div class="field"><label for="backupRetention">Snapshots to retain</label><input id="backupRetention" type="number" min="1" max="100" required /></div><div class="field"><label for="backupDirectory">Backup directory</label><div class="inline-control"><input id="backupDirectory" readonly /><button id="chooseBackupDirectory" class="secondary" type="button" data-icon="folder">Choose</button></div></div></section>
               <section class="settings-section master-password-section">
                 <h2>Master password</h2>
-                <div class="field"><label for="oldMasterPassword">Current master password</label><div class="inline-control"><input id="oldMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /><button id="toggleOldMasterPassword" class="secondary" type="button" aria-label="Show current master password" aria-pressed="false" data-icon="eye">Show</button></div></div>
+                <div class="field"><label for="oldMasterPassword">Current master password</label><div class="secret-control"><input id="oldMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /><button id="toggleOldMasterPassword" class="secret-toggle" type="button" aria-label="Show current master password" aria-pressed="false" data-secret-label="current master password" data-icon="eye">Show</button></div></div>
                 <div class="field">
                   <label for="newMasterPassword">New master password</label>
-                  <div class="inline-control"><input id="newMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /><button id="toggleNewMasterPassword" class="secondary" type="button" aria-label="Show new master password" aria-pressed="false" data-icon="eye">Show</button></div>
+                  <div class="secret-control"><input id="newMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /><button id="toggleNewMasterPassword" class="secret-toggle" type="button" aria-label="Show new master password" aria-pressed="false" data-secret-label="new master password" data-icon="eye">Show</button></div>
                   <div id="newMasterPasswordStrength" class="password-strength" data-score="0"><div id="newMasterPasswordStrengthMeter" class="password-strength-meter" role="meter" aria-label="New master password strength" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0"><span></span></div><small>Strength <strong id="newMasterPasswordStrengthLabel" aria-live="polite">No password</strong></small></div>
                 </div>
-                <div class="field"><label for="newMasterPasswordConfirm">Confirm new master password</label><div class="inline-control"><input id="newMasterPasswordConfirm" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /><button id="toggleNewMasterPasswordConfirm" class="secondary" type="button" aria-label="Show confirm new master password" aria-pressed="false" data-icon="eye">Show</button></div></div>
+                <div class="field"><label for="newMasterPasswordConfirm">Confirm new master password</label><div class="secret-control"><input id="newMasterPasswordConfirm" type="password" minlength="12" maxlength="1024" autocomplete="new-password" /><button id="toggleNewMasterPasswordConfirm" class="secret-toggle" type="button" aria-label="Show confirm new master password" aria-pressed="false" data-secret-label="confirm new master password" data-icon="eye">Show</button></div></div>
                 <button id="rotateMaster" class="secondary section-action" type="button" data-icon="rotate">Rotate master password</button>
               </section>
-              <section class="settings-section"><h2>Recovery key</h2><p>Generate a replacement key after confirming your master password. The old recovery key stops working immediately.</p><div class="field"><label for="recoveryMasterPassword">Master password</label><div class="inline-control"><input id="recoveryMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /><button id="toggleRecoveryMasterPassword" class="secondary" type="button" aria-label="Show recovery master password" aria-pressed="false" data-icon="eye">Show</button></div></div><button id="regenerateRecovery" class="danger section-action" type="button" data-icon="key">Replace recovery key</button><p id="recoveryKeyStatus" class="form-help recovery-key-status" role="status">Recovery key replacements are saved immediately. The Save settings button is not required.</p></section>
+              <section class="settings-section"><h2>Recovery key</h2><p>Generate a replacement key after confirming your master password. The old recovery key stops working immediately.</p><div class="field"><label for="recoveryMasterPassword">Master password</label><div class="secret-control"><input id="recoveryMasterPassword" type="password" minlength="12" maxlength="1024" autocomplete="current-password" /><button id="toggleRecoveryMasterPassword" class="secret-toggle" type="button" aria-label="Show recovery master password" aria-pressed="false" data-secret-label="recovery master password" data-icon="eye">Show</button></div></div><button id="regenerateRecovery" class="danger section-action" type="button" data-icon="recovery">Replace recovery key</button><p id="recoveryKeyStatus" class="form-help recovery-key-status" role="status">Recovery key replacements are saved immediately. The Save settings button is not required.</p></section>
             </form>
           </section>
 
@@ -403,7 +403,7 @@
                   <dl class="help-definitions">
                     <div><dt>Notes</dt><dd>Free-text secure content, encrypted with the rest of the Qi. Up to 100,000 characters.</dd></div>
                     <div><dt>Security questions</dt><dd>Optional question/answer pairs for sites that require them. <strong>Add question</strong> appends a new blank pair; each answer has its own show/hide and copy buttons.</dd></div>
-                    <div><dt>Custom fields</dt><dd>Add labeled values such as PINs, membership numbers, account IDs, or security codes. Secret fields stay masked in the editor, and all values are encrypted with the rest of the Qi. Custom-field labels and values are also included in Ring search.</dd></div>
+                    <div><dt>Custom fields</dt><dd>Add labeled values such as PINs, membership numbers, account IDs, or security codes. The Secret checkbox keeps a value masked by default; its eye button temporarily shows or hides the value without changing that setting. All values are encrypted with the rest of the Qi and included in Ring search.</dd></div>
                     <div><dt>Password history</dt><dd>Shows previous passwords this Qi has used, kept automatically so you can recover an older value if a change was a mistake.</dd></div>
                   </dl>
                   <p>Save before leaving an edited Qi, or QiRing will offer to save, discard, or let you stay. Deleting a Qi asks for confirmation naming the entry and offers a temporary <strong>Undo</strong> from the resulting notification.</p>

@@ -472,6 +472,9 @@ button.danger {
 }
 
 .header-location h1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   overflow: hidden;
   margin: 0;
   color: var(--accent);
@@ -479,6 +482,22 @@ button.danger {
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.view-title-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.view-title-icon .button-icon {
+  width: 19px;
+  height: 19px;
+  stroke-width: 1.8;
+}
+
+#viewTitleText {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-controls,
@@ -1148,6 +1167,46 @@ kbd {
   flex: 0 0 auto;
 }
 
+.secret-control {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.secret-control input {
+  padding-right: 42px;
+}
+
+button.secret-toggle {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  transform: translateY(-50%);
+  border-color: transparent;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+button.secret-toggle:hover {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--accent);
+}
+
+button.secret-toggle > .button-label {
+  display: none !important;
+}
+
+button.secret-toggle > .button-icon {
+  display: block !important;
+}
+
 .generator-strip {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content;
@@ -1308,8 +1367,12 @@ kbd {
 
 .question-row {
   display: grid;
-  grid-template-columns: minmax(150px, 0.8fr) minmax(190px, 1.2fr) auto auto auto;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(190px, 1.2fr) auto auto;
   gap: 5px;
+}
+
+.question-answer-control {
+  width: 100%;
 }
 
 .question-row button {
@@ -2169,27 +2232,23 @@ kbd {
   }
 
   .question-row {
-    grid-template-columns: minmax(0, 1fr) max-content max-content max-content;
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
   }
 
   .question-row .question-input {
     grid-column: 1 / -1;
   }
 
-  .question-row .answer-input {
+  .question-row .question-answer-control {
     grid-column: 1;
   }
 
   .question-row .copy-question {
-    grid-column: 3;
-  }
-
-  .question-row .toggle-question {
     grid-column: 2;
   }
 
   .question-row .remove-question {
-    grid-column: 4;
+    grid-column: 3;
   }
 
   .custom-field-row {

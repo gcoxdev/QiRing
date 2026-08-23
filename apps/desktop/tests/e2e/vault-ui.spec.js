@@ -97,8 +97,8 @@ async function installTauriMock(page) {
           case "unlock_vault_master": {
             window.__unlockFeedbackAtInvoke = {
               frame: frameCounter,
-              busy: document.querySelector("#masterUnlockPanel button").getAttribute("aria-busy"),
-              label: document.querySelector("#masterUnlockPanel button").textContent.trim()
+              busy: document.querySelector("#masterUnlockPanel button[type='submit']").getAttribute("aria-busy"),
+              label: document.querySelector("#masterUnlockPanel button[type='submit']").textContent.trim()
             };
             await new Promise((resolve) => window.setTimeout(resolve, 800));
             return { session: { token: "session", unlocked_at: new Date().toISOString() }, migrated_recovery: null };
@@ -265,6 +265,10 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator(".auth-brand")).toHaveText("QiRing");
   await expect(page.locator("#unlockScreen .section-code, .auth-lede, .security-spec, .eyebrow")).toHaveCount(0);
   await expect(page.locator("#unlockTitle")).toHaveText("Unlock QiRing");
+  await page.getByRole("button", { name: "Show master password" }).click();
+  await expect(page.locator("#unlockMaster")).toHaveAttribute("type", "text");
+  await expect(page.getByRole("button", { name: "Hide master password" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Hide master password" }).click();
   await page.locator("#unlockMaster").fill("correct horse battery staple");
   const unlockButton = page.locator("#masterUnlockPanel button[type=submit]");
   const frameBeforeUnlock = await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(window.__frameCounter))));
@@ -435,6 +439,12 @@ test("credential, TOTP, and security-question controls reflow at minimum width",
 
   await page.getByRole("button", { name: "Show current code" }).click();
   await expect(page.locator("#totpCode")).toHaveText("123456");
+  await page.locator("#itemTotpSecret").fill("JBSWY3DPEHPK3PXP");
+  await page.getByRole("button", { name: "Show TOTP secret" }).click();
+  await expect(page.locator("#itemTotpSecret")).toHaveAttribute("type", "text");
+  await page.getByRole("button", { name: "Hide TOTP secret" }).click();
+  await expect(page.locator("#itemTotpSecret")).toHaveAttribute("type", "password");
+
   const totpPositions = await page.locator(".totp-stack").evaluate((stack) => {
     const secret = stack.querySelector(".field").getBoundingClientRect();
     const display = stack.querySelector(".totp-display").getBoundingClientRect();
@@ -462,18 +472,21 @@ test("credential, TOTP, and security-question controls reflow at minimum width",
   const questionPositions = await page.locator(".question-row").evaluate((row) => {
     const question = row.querySelector(".question-input").getBoundingClientRect();
     const answer = row.querySelector(".answer-input").getBoundingClientRect();
+    const answerControl = row.querySelector(".question-answer-control").getBoundingClientRect();
     const toggle = row.querySelector(".toggle-question").getBoundingClientRect();
     const copy = row.querySelector(".copy-question").getBoundingClientRect();
     const remove = row.querySelector(".remove-question").getBoundingClientRect();
     const bounds = row.getBoundingClientRect();
     return {
       answerBelowQuestion: answer.top >= question.bottom,
-      actionsShareRow: Math.abs(toggle.top - copy.top) < 1 && Math.abs(copy.top - remove.top) < 1,
+      actionsShareRow: Math.abs(answerControl.top - copy.top) < 1 && Math.abs(copy.top - remove.top) < 1,
+      toggleInsideAnswer: toggle.left >= answer.left && toggle.right <= answer.right && Math.abs((toggle.top + toggle.bottom) / 2 - (answer.top + answer.bottom) / 2) < 1,
       removeInside: remove.right <= bounds.right + 1
     };
   });
   expect(questionPositions.answerBelowQuestion).toBe(true);
   expect(questionPositions.actionsShareRow).toBe(true);
+  expect(questionPositions.toggleInsideAnswer).toBe(true);
   expect(questionPositions.removeInside).toBe(true);
 
   await page.getByRole("button", { name: "Add field" }).click();
@@ -521,6 +534,12 @@ test("password strength updates live and custom fields round-trip through the Qi
   await row.getByLabel("Value", { exact: true }).fill("7391");
   await row.getByLabel("Keep value secret").check();
   await expect(row.getByLabel("Value", { exact: true })).toHaveAttribute("type", "password");
+  await row.getByRole("button", { name: "Show secret custom field value" }).click();
+  await expect(row.getByLabel("Value", { exact: true })).toHaveAttribute("type", "text");
+  await expect(row.getByLabel("Keep value secret")).toBeChecked();
+  await row.getByRole("button", { name: "Hide secret custom field value" }).click();
+  await expect(row.getByLabel("Value", { exact: true })).toHaveAttribute("type", "password");
+  await expect(row.getByLabel("Keep value secret")).toBeChecked();
   await page.getByRole("button", { name: "Save Qi" }).click();
   await expect(page.locator("#dirtyIndicator")).toBeHidden();
 
@@ -529,6 +548,7 @@ test("password strength updates live and custom fields round-trip through the Qi
   await expect(page.locator(".custom-field-row")).toHaveCount(1);
   await expect(page.locator(".custom-field-row").getByLabel("Label")).toHaveValue("Door PIN");
   await expect(page.locator(".custom-field-row").getByLabel("Value", { exact: true })).toHaveAttribute("type", "password");
+  await expect(page.locator(".custom-field-row").getByRole("button", { name: "Show secret custom field value" })).toBeVisible();
 });
 
 test("new Qi entries default to the Strong 20 password profile", async ({ page }) => {
@@ -634,24 +654,26 @@ test("destructive Qi and profile actions use explicit in-app confirmation", asyn
 test("accent headings establish hierarchy without redundant section codes", async ({ page }) => {
   const accent = "rgb(157, 247, 199)";
   await expect(page.locator("#viewTitle")).toHaveCSS("color", accent);
+  await expect(page.locator("#viewTitleIcon[data-icon='ring'] svg")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Ring", exact: true })).toHaveCSS("color", accent);
   await page.getByRole("button", { name: "Expand all categories" }).click();
   await page.getByRole("button", { name: "Admin", exact: true }).click();
   await expect(page.locator("#itemEditorTitle")).toHaveCSS("color", accent);
 
   const modules = [
-    ["Password Profiles", "#profilesView", "Password Profiles"],
-    ["Ring Health", "#healthView", "Ring Health"],
-    ["Backups", "#backupsView", "Backups & Transfer"],
-    ["Settings", "#settingsView", "Settings"],
-    ["Help", "#helpView", "Help"]
+    ["Password Profiles", "#profilesView", "Password Profiles", "profile"],
+    ["Ring Health", "#healthView", "Ring Health", "shield"],
+    ["Backups", "#backupsView", "Backups & Transfer", "backup"],
+    ["Settings", "#settingsView", "Settings", "settings"],
+    ["Help", "#helpView", "Help", "question"]
   ];
-  for (const [menuName, view, pageTitle] of modules) {
+  for (const [menuName, view, pageTitle, icon] of modules) {
     await page.getByRole("button", { name: "Open navigation menu" }).click();
     await page.getByRole("menuitem", { name: new RegExp(menuName) }).click();
     await expect(page.locator(view)).toBeVisible();
     await expect(page.locator("#viewTitle")).toHaveText(pageTitle);
     await expect(page.locator("#viewTitle")).toHaveCSS("color", accent);
+    await expect(page.locator(`#viewTitleIcon[data-icon='${icon}'] svg`)).toBeVisible();
   }
   await expect(page.locator("#healthHeading, #backupsHeading, #settingsHeading, #helpHeading, .module-heading")).toHaveCount(0);
 });
@@ -969,7 +991,7 @@ test("standard workspace controls share a common height", async ({ page }) => {
       await page.getByRole("button", { name: "Open navigation menu" }).click();
       await page.getByRole("menuitem", { name: new RegExp(menuName) }).click();
     }
-    const heights = await page.locator(".workspace input:not([type=checkbox]):not([type=radio]), .workspace select, .workspace button:not(.compact):not(.compact-button):not(.category-action):not(.sort-action)").evaluateAll((controls) => controls
+    const heights = await page.locator(".workspace input:not([type=checkbox]):not([type=radio]), .workspace select, .workspace button:not(.compact):not(.compact-button):not(.category-action):not(.sort-action):not(.secret-toggle)").evaluateAll((controls) => controls
       .filter((control) => control.getClientRects().length > 0)
       .map((control) => control.getBoundingClientRect().height));
     expect([...new Set(heights)]).toEqual([38]);

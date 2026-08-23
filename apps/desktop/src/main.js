@@ -29,15 +29,15 @@ const DEFAULT_SETTINGS = {
 
 const elements = Object.fromEntries(
   [
-    "authShell", "createScreen", "unlockScreen", "createForm", "createMaster", "createConfirm",
-    "masterTab", "recoveryTab", "masterUnlockPanel", "recoveryUnlockPanel", "unlockMaster",
-    "recoveryKey", "recoveryMaster", "recoveryConfirm", "vaultShell", "brandHome", "viewTitle",
+    "authShell", "createScreen", "unlockScreen", "createForm", "createMaster", "createConfirm", "toggleCreateMaster", "toggleCreateConfirm",
+    "masterTab", "recoveryTab", "masterUnlockPanel", "recoveryUnlockPanel", "unlockMaster", "toggleUnlockMaster",
+    "recoveryKey", "recoveryMaster", "recoveryConfirm", "toggleRecoveryKey", "toggleRecoveryMaster", "toggleRecoveryConfirm", "vaultShell", "brandHome", "viewTitle", "viewTitleIcon", "viewTitleText",
     "newAction", "saveAction", "deleteAction", "menuButton", "appMenu", "lockButton", "qiringView",
     "profilesView", "healthView", "backupsView", "settingsView", "helpView", "itemCount", "ringSortMode", "expandCategories", "collapseCategories", "searchInput", "tagFilter",
     "clearSearch", "itemList", "itemEditorTitle", "dirtyIndicator", "itemForm", "itemTitle", "itemType",
     "itemFolder", "categoryOptions", "itemTags", "itemIconPreview", "itemIconPlaceholder", "uploadItemIcon", "fetchItemFavicon", "removeItemIcon", "credentialFields", "itemUrl", "openUrlButton",
     "itemUsername", "copyUsername", "itemPassword", "togglePassword", "copyPassword", "passwordStrength", "passwordStrengthMeter", "passwordStrengthLabel", "profileSelect",
-    "generatePassword", "itemTotpSecret", "totpCode", "refreshTotp", "totpRemaining", "itemNotes",
+    "generatePassword", "itemTotpSecret", "toggleTotpSecret", "totpCode", "refreshTotp", "totpRemaining", "itemNotes",
     "customFieldSection", "addCustomField", "customFieldList", "questionSection", "addQuestion", "questionList", "historySection", "historyList", "profileCount",
     "profileList", "profileEditorTitle", "profileDirtyIndicator", "profileForm", "profileName", "profileLength",
     "profileRangeSummary",
@@ -77,6 +77,18 @@ const viewLabels = {
   settings: "Settings",
   help: "Help"
 };
+
+const viewIcons = {
+  qiring: "ring",
+  profiles: "profile",
+  health: "shield",
+  backups: "backup",
+  settings: "settings",
+  help: "question"
+};
+
+elements.viewTitleIcon.append(createIcon(viewIcons.qiring));
+elements.viewTitleIcon.dataset.icon = viewIcons.qiring;
 
 const state = {
   view: "qiring",
@@ -232,6 +244,7 @@ async function busy(button, task) {
 }
 
 function setAuthScreen(name) {
+  remaskAuthSecrets();
   setHidden(elements.authShell, false);
   setHidden(elements.vaultShell, true);
   elements.authShell.dataset.screen = name;
@@ -506,7 +519,9 @@ async function navigate(view, { force = false, focusHeading = true } = {}) {
   state.expandedCategories.clear();
   updateDirtyIndicators();
   for (const [name, section] of Object.entries(views)) setHidden(section, name !== view);
-  elements.viewTitle.textContent = viewLabels[view];
+  elements.viewTitleText.textContent = viewLabels[view];
+  elements.viewTitleIcon.replaceChildren(createIcon(viewIcons[view]));
+  elements.viewTitleIcon.dataset.icon = viewIcons[view];
   document.title = `${viewLabels[view]} — QiRing`;
   document.querySelectorAll("#appMenu [data-view]").forEach((button) => {
     if (button.dataset.view === view) button.setAttribute("aria-current", "page");
@@ -1085,6 +1100,19 @@ function setSecretVisibility(input, toggle, visible) {
   toggle.setAttribute("aria-pressed", String(visible));
 }
 
+const authSecrets = [
+  [elements.createMaster, elements.toggleCreateMaster],
+  [elements.createConfirm, elements.toggleCreateConfirm],
+  [elements.unlockMaster, elements.toggleUnlockMaster],
+  [elements.recoveryKey, elements.toggleRecoveryKey],
+  [elements.recoveryMaster, elements.toggleRecoveryMaster],
+  [elements.recoveryConfirm, elements.toggleRecoveryConfirm]
+];
+
+function remaskAuthSecrets() {
+  for (const [input, toggle] of authSecrets) remaskSecret(input, toggle);
+}
+
 function toggleSecretVisibility(input, toggle) {
   setSecretVisibility(input, toggle, input.type === "password");
 }
@@ -1184,13 +1212,33 @@ function addCustomFieldRow(field = { label: "", value: "", concealed: false }) {
     attributes: { id: valueId, maxlength: "4096", autocomplete: "off" }
   });
   valueInput.value = field.value || "";
-  valueField.append(valueLabel, valueInput);
+  const valueControl = createElement("div", {
+    className: `custom-field-value-control${field.concealed ? " secret-control" : ""}`
+  });
+  const toggleButton = createElement("button", {
+    className: "secret-toggle custom-field-toggle",
+    text: "Show",
+    type: "button",
+    icon: "eye",
+    attributes: {
+      "aria-label": "Show secret custom field value",
+      "aria-pressed": "false",
+      "data-secret-label": "secret custom field value"
+    }
+  });
+  toggleButton.hidden = !field.concealed;
+  toggleButton.addEventListener("click", () => toggleSecretVisibility(valueInput, toggleButton));
+  valueControl.append(valueInput, toggleButton);
+  valueField.append(valueLabel, valueControl);
 
   const secretLabel = createElement("label", { className: "check-row custom-field-secret" });
   const secretInput = createElement("input", { type: "checkbox", attributes: { "aria-label": "Keep value secret" } });
   secretInput.checked = Boolean(field.concealed);
   secretInput.addEventListener("change", () => {
-    valueInput.type = secretInput.checked ? "password" : "text";
+    remaskSecret(valueInput, toggleButton);
+    valueControl.classList.toggle("secret-control", secretInput.checked);
+    toggleButton.hidden = !secretInput.checked;
+    if (!secretInput.checked) valueInput.type = "text";
   });
   secretLabel.append(secretInput, createElement("span", { text: "Secret" }));
 
@@ -1220,8 +1268,9 @@ function addQuestionRow(question = { question: "", answer: "" }) {
     attributes: { "aria-label": "Security answer", maxlength: "4096", placeholder: "Answer…", autocomplete: "off" }
   });
   answerInput.value = question.answer || "";
+  const answerControl = createElement("div", { className: "secret-control question-answer-control" });
   const toggleButton = createElement("button", {
-    className: "secondary toggle-question",
+    className: "secret-toggle toggle-question",
     text: "Show",
     type: "button",
     icon: "eye",
@@ -1231,6 +1280,7 @@ function addQuestionRow(question = { question: "", answer: "" }) {
       "data-secret-label": "security answer"
     }
   });
+  answerControl.append(answerInput, toggleButton);
   toggleButton.addEventListener("click", () => toggleSecretVisibility(answerInput, toggleButton));
   const copyButton = createElement("button", { className: "secondary copy-question", text: "Copy", type: "button", icon: "copy" });
   copyButton.addEventListener("click", () => copySecret(answerInput.value, "Security answer"));
@@ -1240,7 +1290,7 @@ function addQuestionRow(question = { question: "", answer: "" }) {
     markItemDirty();
   });
   for (const input of [questionInput, answerInput]) input.addEventListener("input", markItemDirty);
-  row.append(questionInput, answerInput, toggleButton, copyButton, removeButton);
+  row.append(questionInput, answerControl, copyButton, removeButton);
   elements.questionList.append(row);
 }
 
@@ -1336,10 +1386,10 @@ function remaskPassword() {
   setButtonIcon(elements.togglePassword, "eye");
   setButtonLabel(elements.togglePassword, "Show");
   elements.togglePassword.setAttribute("aria-pressed", "false");
-  elements.itemTotpSecret.type = "password";
+  remaskSecret(elements.itemTotpSecret, elements.toggleTotpSecret);
   for (const row of elements.customFieldList.querySelectorAll(".custom-field-row")) {
     if (row.querySelector(".custom-field-secret input").checked) {
-      row.querySelector(".custom-field-value").type = "password";
+      remaskSecret(row.querySelector(".custom-field-value"), row.querySelector(".custom-field-toggle"));
     }
   }
 }
@@ -2219,6 +2269,9 @@ for (const tab of [elements.masterTab, elements.recoveryTab]) {
     (master ? elements.masterTab : elements.recoveryTab).focus();
   });
 }
+for (const [input, toggle] of authSecrets) {
+  toggle.addEventListener("click", () => toggleSecretVisibility(input, toggle));
+}
 elements.recoveryAcknowledged.addEventListener("change", updateRecoveryReady);
 elements.recoveryVerify.addEventListener("input", updateRecoveryReady);
 elements.finishRecovery.addEventListener("click", runSafely(finishRecoveryCeremony));
@@ -2293,6 +2346,7 @@ elements.copyUsername.addEventListener("click", runSafely(() => copySecret(eleme
 elements.copyPassword.addEventListener("click", runSafely(() => copySecret(elements.itemPassword.value, "Password")));
 elements.openUrlButton.addEventListener("click", runSafely(openCurrentUrl));
 elements.generatePassword.addEventListener("click", runSafely(generateFromSelectedProfile));
+elements.toggleTotpSecret.addEventListener("click", () => toggleSecretVisibility(elements.itemTotpSecret, elements.toggleTotpSecret));
 elements.refreshTotp.addEventListener("click", runSafely(refreshTotpCode));
 
 elements.profileForm.addEventListener("input", markProfileDirty);
