@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [lib]
-name = "qiring_desktop"
+name = "qiring_desktop_lib"
 crate-type = ["cdylib", "rlib"]
 
 [build-dependencies]

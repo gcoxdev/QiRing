@@ -200,14 +200,17 @@ fn save_bytes_atomic_at_existing_directory(path: &Path, bytes: &[u8]) -> anyhow:
     let parent = path.parent().context("Ring path must have parent directory")?;
     reject_symlink(path)?;
 
-    let mut options = AtomicWriteFile::options();
+    let options = AtomicWriteFile::options();
     #[cfg(unix)]
-    {
+    let options = {
         use atomic_write_file::unix::OpenOptionsExt as AtomicOpenOptionsExt;
         use std::os::unix::fs::OpenOptionsExt as StdOpenOptionsExt;
+
+        let mut options = options;
         AtomicOpenOptionsExt::preserve_mode(&mut options, false);
         StdOpenOptionsExt::mode(&mut options, 0o600);
-    }
+        options
+    };
 
     let mut file = options.open(path).context("failed to open atomic Ring writer")?;
     file.write_all(bytes)
@@ -307,6 +310,8 @@ fn enforce_private_file(path: &Path) -> anyhow::Result<()> {
         fs::set_permissions(path, fs::Permissions::from_mode(0o600))
             .context("failed to restrict Ring file permissions")?;
     }
+    #[cfg(not(unix))]
+    let _ = path;
     Ok(())
 }
 
@@ -318,6 +323,8 @@ fn sync_parent_directory(path: &Path) -> anyhow::Result<()> {
             .sync_all()
             .context("failed to sync parent directory")?;
     }
+    #[cfg(not(unix))]
+    let _ = path;
     Ok(())
 }
 
