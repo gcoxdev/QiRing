@@ -67,6 +67,20 @@ test("favicon import is capability scoped and blocks private networks", async ()
   assert.match(backend, /MAX_QI_ICON_BYTES/);
 });
 
+test("release workflow publishes installer and portable targets", async () => {
+  const workflow = await read("../../../.github/workflows/release.yml");
+  const collector = await read("../scripts/collect-release.mjs");
+  const packager = await read("../scripts/package-portable.mjs");
+  assert.match(workflow, /npm run build:\$\{\{ matrix\.platform \}\}/);
+  assert.match(workflow, /package-portable\.mjs appimage/);
+  assert.match(workflow, /npm run build:windows-portable/);
+  assert.match(workflow, /npm run build:windows/);
+  assert.match(workflow, /package-portable\.mjs windows/);
+  assert.match(collector, /linux: \["\.appimage", "\.deb", "\.tar\.gz"\]/);
+  assert.match(collector, /windows: \["\.msi", "\.zip"\]/);
+  assert.match(packager, /"qiring-portable"/);
+});
+
 test("password-derived vault work runs off the Tauri main thread", async () => {
   const backend = await read("../src-tauri/src/lib.rs");
   assert.match(backend, /async fn unlock_vault_master[\s\S]*?run_service_blocking/);

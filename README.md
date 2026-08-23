@@ -29,6 +29,8 @@ The configured native distribution targets are:
 
 Native installers must be built on their corresponding operating system: MSI on Windows, DMG on macOS, and AppImage/DEB on Linux. The current project is not configured for Android, iOS, RPM, Flatpak, Snap, AUR, NSIS, or app-store packages.
 
+The GitHub release workflow also packages the AppImage with its portable marker as a `.tar.gz` archive and the standalone Windows executable with its portable marker as a `.zip` archive. Keeping each launcher and its exact `qiring-portable` sidecar inside one archive prevents incomplete portable downloads.
+
 ### Build shortcuts
 
 The following shortcuts can be run from the repository root after installing the desktop dependencies with `npm --prefix apps/desktop ci`:

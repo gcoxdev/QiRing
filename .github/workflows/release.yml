@@ -140,16 +140,25 @@ jobs:
         working-directory: apps/desktop
         run: npm run build:${{ matrix.platform }}
 
-      - name: Build Windows installer bundle
+      - name: Package portable AppImage
+        if: matrix.platform == 'linux'
+        working-directory: apps/desktop
+        run: |
+          node scripts/enable-portable.mjs appimage
+          node scripts/package-portable.mjs appimage
+
+      - name: Build Windows portable executable and installer
         if: matrix.platform == 'windows'
         working-directory: apps/desktop
         shell: pwsh
         run: |
+          npm run build:windows-portable
           if ($env:TAURI_WINDOWS_CONFIG) {
             npm run build:windows -- --config $env:TAURI_WINDOWS_CONFIG
           } else {
             npm run build:windows
           }
+          node scripts/package-portable.mjs windows
 
       - name: Smoke test Linux installers
         if: matrix.platform == 'linux'
@@ -158,13 +167,18 @@ jobs:
           set -euo pipefail
           appimage="$(find target/release/bundle/appimage -type f -name '*.AppImage' -print -quit)"
           deb="$(find target/release/bundle/deb -type f -name '*.deb' -print -quit)"
+          portable="$(find target/release/bundle/portable -type f -name '*_portable.tar.gz' -print -quit)"
           test -n "$appimage"
           test -n "$deb"
+          test -n "$portable"
           smoke_dir="$(mktemp -d)"
           chmod +x "$appimage"
           (cd "$smoke_dir" && "$GITHUB_WORKSPACE/$appimage" --appimage-extract >/dev/null)
           dpkg-deb --info "$deb" >/dev/null
           dpkg-deb --extract "$deb" "$smoke_dir/deb"
+          tar -xzf "$portable" -C "$smoke_dir"
+          test -x "$smoke_dir/$(basename "$appimage")"
+          test -f "$smoke_dir/qiring-portable"
           if [ -n "${SIGN:-}" ]; then
             test -n "$("$appimage" --appimage-signature)"
           fi
@@ -194,6 +208,12 @@ jobs:
           $process = Start-Process msiexec.exe -ArgumentList @('/a', $msi.FullName, '/qn', "TARGETDIR=$destination") -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "MSI administrative install failed with exit code $($process.ExitCode)." }
           if (-not (Get-ChildItem $destination -Filter *.exe -Recurse)) { throw "Installed MSI contains no executable." }
+          $portable = Get-ChildItem target\release\bundle\portable -Filter *_portable.zip | Select-Object -First 1
+          if (-not $portable) { throw "No portable Windows archive was produced." }
+          $portableDestination = Join-Path $env:RUNNER_TEMP "qiring-portable-smoke"
+          Expand-Archive -Path $portable.FullName -DestinationPath $portableDestination
+          if (-not (Test-Path (Join-Path $portableDestination "qiring-desktop.exe"))) { throw "Portable archive contains no executable." }
+          if (-not (Test-Path (Join-Path $portableDestination "qiring-portable"))) { throw "Portable archive contains no portable marker." }
           if ($env:WINDOWS_CERTIFICATE) {
             $artifacts = @(Get-ChildItem target/release -Filter *.exe -File) + @(Get-ChildItem target/release/bundle/msi -Filter *.msi -File)
             foreach ($artifact in $artifacts) {

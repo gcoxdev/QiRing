@@ -6,7 +6,7 @@ const workspaceRoot = resolve(desktopRoot, "../..");
 const bundleRoot = resolve(workspaceRoot, "target/release/bundle");
 const outputRoot = resolve(desktopRoot, "release-assets");
 const platform = (process.argv[2] || process.platform).toLowerCase().replaceAll(/[^a-z0-9-]/g, "-");
-const acceptedSuffixes = [".appimage", ".deb", ".rpm", ".dmg", ".msi", ".exe", ".sig", ".tar.gz"];
+const acceptedSuffixes = [".appimage", ".deb", ".rpm", ".dmg", ".msi", ".exe", ".sig", ".tar.gz", ".zip"];
 
 rmSync(outputRoot, { recursive: true, force: true });
 mkdirSync(outputRoot, { recursive: true });
@@ -39,9 +39,9 @@ for (const source of walk(bundleRoot)) {
 
 if (copied === 0) throw new Error("Tauri produced no recognized release bundle artifacts.");
 const requiredSuffixes = {
-  linux: [".appimage", ".deb"],
+  linux: [".appimage", ".deb", ".tar.gz"],
   macos: [".dmg"],
-  windows: [".msi"]
+  windows: [".msi", ".zip"]
 }[platform] || [];
 for (const suffix of requiredSuffixes) {
   if (!copiedNames.some((name) => name.endsWith(suffix))) {

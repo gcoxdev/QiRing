@@ -1,6 +1,6 @@
 # QiRing release process
 
-The release workflow builds native Tauri installers on Linux, macOS, and Windows from the pinned Rust and Node dependency locks. Each platform artifact is accompanied by an SPDX JSON SBOM, SHA-256 checksums, and a GitHub build-provenance attestation. GitHub Actions are pinned to immutable commit SHAs.
+The release workflow builds native Tauri installers on Linux, macOS, and Windows from the pinned Rust and Node dependency locks. Linux artifacts include DEB, AppImage, and a portable AppImage archive; Windows artifacts include MSI and a portable executable archive. Portable archives keep the launcher beside the required `qiring-portable` marker. Each platform artifact is accompanied by an SPDX JSON SBOM, SHA-256 checksums, and a GitHub build-provenance attestation. GitHub Actions are pinned to immutable commit SHAs.
 
 ## Signing secrets
 
