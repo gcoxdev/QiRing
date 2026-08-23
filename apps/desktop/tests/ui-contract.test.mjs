@@ -10,6 +10,7 @@ test("production webview boundary is explicit and least privilege", async () => 
   assert.equal(config.app.withGlobalTauri, false);
   assert.equal(config.app.windows[0].minWidth, 800);
   assert.equal(config.app.windows[0].minHeight, 600);
+  assert.equal(config.app.windows[0].incognito, true);
   assert.match(config.app.security.csp, /object-src 'none'/);
   assert.doesNotMatch(config.app.security.csp, /unsafe-inline|unsafe-eval/);
 
@@ -22,6 +23,11 @@ test("production webview boundary is explicit and least privilege", async () => 
   assert.equal(capability.permissions.includes("allow-import-selected-plaintext-csv"), true);
   const opener = capability.permissions.find((permission) => typeof permission === "object" && permission.identifier === "opener:allow-open-url");
   assert.deepEqual(opener.allow.map((entry) => entry.url).sort(), ["http://*", "https://*"]);
+});
+
+test("native builds re-embed freshly generated frontend assets", async () => {
+  const buildScript = await read("../src-tauri/build.rs");
+  assert.match(buildScript, /cargo:rerun-if-changed=\.\.\/web-dist/);
 });
 
 test("plaintext transfer requires preview, mapping, and export confirmation", async () => {

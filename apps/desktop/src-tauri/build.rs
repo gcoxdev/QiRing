@@ -39,6 +39,8 @@ const COMMANDS: &[&str] = &[
 ];
 
 fn main() {
+    // Vite runs before Cargo, so force Tauri to re-embed the freshly built assets.
+    println!("cargo:rerun-if-changed=../web-dist");
     let manifest = tauri_build::AppManifest::new().commands(COMMANDS);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
         .expect("failed to generate Tauri build context and command permissions");
