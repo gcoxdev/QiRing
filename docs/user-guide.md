@@ -41,7 +41,7 @@ On Linux Wayland, the desktop compositor intentionally controls absolute window 
 
 ## Ring data location
 
-Installed builds and development runs use the operating system's private per-user directories under the `app.qiring.desktop` application identifier. AppImage and standalone Windows builds can instead use explicit portable mode, which keeps `vault.qiring`, `window-state.json`, `ui-preferences.json`, and restore-safety snapshots in a private `QiRingData` folder beside the launcher. Keep that directory together with the launcher when moving it. The main [README](../README.md#ring-data-and-portable-mode) lists exact platform paths and activation methods.
+Installed builds and development runs use the operating system's private per-user directories under the `app.qiring.desktop` application identifier. AppImage and standalone Windows builds can instead use explicit portable mode, which keeps `vault.qiring`, `window-state.json`, `ui-preferences.json`, and restore-safety snapshots in a private `QiRingData` folder beside the launcher. Keep that directory together with the launcher when moving it. The [development guide](development.md#ring-storage) lists exact platform paths and portable-mode activation methods.
 
 When QiRing changes from an older storage path, it validates and copies existing data without deleting the source. It will not choose automatically if it detects different Ring identities in multiple legacy locations.
 
