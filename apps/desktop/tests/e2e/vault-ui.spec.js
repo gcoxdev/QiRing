@@ -769,6 +769,18 @@ test("selecting Ring entries preserves every expanded category", async ({ page }
   }
 });
 
+test("switching Ring entries scrolls the Qi editor to the top", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.getByRole("button", { name: "Expand all categories" }).click();
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  const editor = page.locator("#itemForm");
+  await editor.evaluate((form) => { form.scrollTop = form.scrollHeight; });
+  await expect.poll(() => editor.evaluate((form) => form.scrollTop)).toBeGreaterThan(0);
+
+  await page.getByRole("button", { name: "Billing", exact: true }).click();
+  await expect(editor).toHaveJSProperty("scrollTop", 0);
+});
+
 test("Ring sorting cycles through alphabetic modes and preserves draggable custom order", async ({ page }) => {
   const categoryNames = () => page.locator("#itemList > .category-group > .category-disclosure > .category-summary strong").allTextContents();
   const sortButton = page.locator("#ringSortMode");

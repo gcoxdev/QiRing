@@ -1042,6 +1042,7 @@ async function selectItem(id, { force = false } = {}) {
   remaskPassword();
   renderItems();
   updateContextActionState();
+  elements.itemForm.scrollTop = 0;
   return true;
 }
 
