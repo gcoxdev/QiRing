@@ -30,6 +30,18 @@ test("native builds re-embed freshly generated frontend assets", async () => {
   assert.match(buildScript, /cargo:rerun-if-changed=\.\.\/web-dist/);
 });
 
+test("Tauri build manifest generates every app command permission", async () => {
+  const buildScript = await read("../src-tauri/build.rs");
+  const capability = JSON.parse(await read("../src-tauri/capabilities/main.json"));
+  const appPermissions = capability.permissions
+    .filter((permission) => typeof permission === "string" && permission.startsWith("allow-"));
+
+  for (const permission of appPermissions) {
+    const command = permission.slice("allow-".length).replaceAll("-", "_");
+    assert.match(buildScript, new RegExp(`"${command}"`), `${permission} is missing from build.rs`);
+  }
+});
+
 test("plaintext transfer requires preview, mapping, and export confirmation", async () => {
   const source = await read("../src/main.js");
   const backend = await read("../src-tauri/src/lib.rs");
