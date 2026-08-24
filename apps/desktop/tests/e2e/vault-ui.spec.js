@@ -105,7 +105,7 @@ async function installTauriMock(page) {
           }
           case "get_security_status": return {
             schema_version: 2,
-            command_version: "7",
+            command_version: "8",
             biometric_available: false,
             biometric_enabled: false,
             auto_lock_minutes: settings.auto_lock_minutes,

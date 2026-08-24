@@ -21,8 +21,8 @@ test("production webview boundary is explicit and least privilege", async () => 
   assert.equal(capability.permissions.includes("allow-set-bootstrap-theme"), true);
   assert.equal(capability.permissions.includes("allow-export-plaintext-csv-dialog"), true);
   assert.equal(capability.permissions.includes("allow-import-selected-plaintext-csv"), true);
-  const opener = capability.permissions.find((permission) => typeof permission === "object" && permission.identifier === "opener:allow-open-url");
-  assert.deepEqual(opener.allow.map((entry) => entry.url).sort(), ["http://*", "https://*"]);
+  assert.equal(capability.permissions.includes("allow-launch-website"), true);
+  assert.equal(capability.permissions.some((permission) => typeof permission === "object" && permission.identifier === "opener:allow-open-url"), false);
 });
 
 test("native builds re-embed freshly generated frontend assets", async () => {

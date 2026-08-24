@@ -1,5 +1,6 @@
 use anyhow::Context;
 use base64::Engine;
+use dom_query::Document;
 use qiring_core::{
     csv_template_bytes, sniff_image_media_type, AppSettings, BackupManifest, BackupPreview, BackupSnapshot,
     CsvColumnMapping, CsvImportPreview, CsvImportReport, GeneratedPassword, HealthReport, ImportReport,
@@ -134,6 +135,10 @@ struct SelectedBackup {
 }
 
 const MAX_QI_ICON_BYTES: usize = 512 * 1024;
+const MAX_FAVICON_CANDIDATES: usize = 8;
+const RASTERIZED_FAVICON_SIZE: u32 = 128;
+const FAVICON_BROWSER_USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
 const WINDOW_MIN_WIDTH: u32 = 800;
 const WINDOW_MIN_HEIGHT: u32 = 600;
 const WINDOW_BOUNDS_PERSIST_DELAY: Duration = Duration::from_millis(500);
@@ -455,6 +460,34 @@ async fn fetch_favicon(url: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn launch_website(url: String) -> Result<(), String> {
+    let url = parse_website_url(&url)?;
+
+    #[cfg(target_os = "linux")]
+    {
+        // GIO launches the registered URI handler directly. This avoids KDE's
+        // KIO URL-to-cache-file conversion used by xdg-open on some systems.
+        gio::AppInfo::launch_default_for_uri(url.as_str(), None::<&gio::AppLaunchContext>)
+            .map_err(|_| "The website could not be opened in the default browser.".to_string())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        tauri_plugin_opener::open_url(url.as_str(), None::<&str>)
+            .map_err(|_| "The website could not be opened in the default browser.".to_string())
+    }
+}
+
+fn parse_website_url(raw_url: &str) -> Result<url::Url, String> {
+    let url = url::Url::parse(raw_url)
+        .map_err(|_| "Enter a complete URL beginning with http:// or https://.".to_string())?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err("QiRing only opens HTTP and HTTPS website URLs.".to_string());
+    }
+    Ok(url)
+}
+
+#[tauri::command]
 async fn export_backup_dialog(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -744,7 +777,6 @@ fn copy_secret(state: State<'_, AppState>, value: String) -> Result<u32, String>
 pub fn run() {
     apply_platform_runtime_defaults();
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let storage = resolve_storage_paths(app)?;
@@ -828,6 +860,7 @@ pub fn run() {
             choose_backup_directory,
             select_item_icon_dialog,
             fetch_favicon,
+            launch_website,
             export_backup_dialog,
             select_backup_file,
             preview_selected_backup,
@@ -952,12 +985,60 @@ fn image_data_url(bytes: &[u8]) -> Result<String, String> {
 
 fn fetch_favicon_data_url(raw_url: &str) -> Result<String, String> {
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let mut target = reqwest::Url::parse(raw_url)
+    let page_url = reqwest::Url::parse(raw_url)
         .map_err(|_| "Enter a complete website URL beginning with http:// or https://.".to_string())?;
+    validate_favicon_url(&page_url)?;
+
+    let mut conventional_url = page_url.clone();
+    conventional_url.set_path("/favicon.ico");
+    conventional_url.set_query(None);
+    conventional_url.set_fragment(None);
+
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    let page_origin = favicon_referrer_origin(&page_url);
+    for (document_url, referrer) in [(conventional_url.clone(), Some(&page_origin)), (page_url, None)] {
+        let Ok(resource) = fetch_public_resource(document_url, referrer) else {
+            continue;
+        };
+        if let Ok(data_url) = favicon_resource_data_url(&resource.bytes) {
+            return Ok(data_url);
+        }
+        for candidate in discover_favicon_urls(&resource.final_url, &resource.bytes) {
+            if seen.insert(candidate.as_str().to_string()) {
+                candidates.push(candidate);
+            }
+            if candidates.len() >= MAX_FAVICON_CANDIDATES {
+                break;
+            }
+        }
+        if candidates.len() >= MAX_FAVICON_CANDIDATES {
+            break;
+        }
+    }
+
+    for candidate in candidates {
+        let Ok(resource) = fetch_public_resource(candidate, Some(&page_origin)) else {
+            continue;
+        };
+        if let Ok(data_url) = favicon_resource_data_url(&resource.bytes) {
+            return Ok(data_url);
+        }
+    }
+
+    Err("The website did not provide a supported favicon.".into())
+}
+
+struct FetchedFaviconResource {
+    final_url: reqwest::Url,
+    bytes: Vec<u8>,
+}
+
+fn fetch_public_resource(
+    mut target: reqwest::Url,
+    referrer: Option<&reqwest::Url>,
+) -> Result<FetchedFaviconResource, String> {
     validate_favicon_url(&target)?;
-    target.set_path("/favicon.ico");
-    target.set_query(None);
-    target.set_fragment(None);
 
     for _ in 0..=4 {
         let (host, endpoint) = resolve_public_endpoint(&target)?;
@@ -966,15 +1047,41 @@ fn fetch_favicon_data_url(raw_url: &str) -> Result<String, String> {
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(4))
             .timeout(Duration::from_secs(8))
-            .user_agent("QiRing/0.1 favicon import");
+            .user_agent(FAVICON_BROWSER_USER_AGENT);
         if host.parse::<IpAddr>().is_err() {
             builder = builder.resolve(&host, endpoint);
         }
         let client = builder
             .build()
             .map_err(|error| format!("could not initialize the favicon client: {error}"))?;
-        let response = client
-            .get(target.clone())
+        let mut request = client.get(target.clone());
+        if let Some(referrer) = referrer {
+            let fetch_site = if referrer.host_str() == target.host_str() {
+                "same-origin"
+            } else {
+                "cross-site"
+            };
+            request = request
+                .header(
+                    reqwest::header::ACCEPT,
+                    "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+                )
+                .header(reqwest::header::REFERER, referrer.as_str())
+                .header("sec-fetch-dest", "image")
+                .header("sec-fetch-mode", "no-cors")
+                .header("sec-fetch-site", fetch_site);
+        } else {
+            request = request
+                .header(
+                    reqwest::header::ACCEPT,
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                )
+                .header("sec-fetch-dest", "document")
+                .header("sec-fetch-mode", "navigate")
+                .header("sec-fetch-site", "none")
+                .header("upgrade-insecure-requests", "1");
+        }
+        let response = request
             .send()
             .map_err(|error| format!("could not fetch the website favicon: {error}"))?;
 
@@ -992,7 +1099,7 @@ fn fetch_favicon_data_url(raw_url: &str) -> Result<String, String> {
         }
         if !response.status().is_success() {
             return Err(format!(
-                "The website did not provide a favicon (HTTP {}).",
+                "The favicon request returned HTTP {}.",
                 response.status().as_u16()
             ));
         }
@@ -1010,9 +1117,82 @@ fn fetch_favicon_data_url(raw_url: &str) -> Result<String, String> {
         if bytes.len() > MAX_QI_ICON_BYTES {
             return Err("The website favicon is larger than 512 KiB.".into());
         }
-        return image_data_url(&bytes);
+        return Ok(FetchedFaviconResource {
+            final_url: target,
+            bytes,
+        });
     }
     Err("The website favicon redirected too many times.".into())
+}
+
+fn favicon_referrer_origin(url: &reqwest::Url) -> reqwest::Url {
+    let mut origin = url.clone();
+    origin.set_path("/");
+    origin.set_query(None);
+    origin.set_fragment(None);
+    origin
+}
+
+fn discover_favicon_urls(base_url: &reqwest::Url, bytes: &[u8]) -> Vec<reqwest::Url> {
+    let Ok(html) = std::str::from_utf8(bytes) else {
+        return Vec::new();
+    };
+    let document = Document::from(html);
+    document
+        .select("link[href]")
+        .iter()
+        .filter(|link| {
+            link.attr("rel").is_some_and(|rel| {
+                rel.split_ascii_whitespace().any(|value| {
+                    let value = value.to_ascii_lowercase();
+                    value == "icon" || value.ends_with("-icon")
+                })
+            })
+        })
+        .filter_map(|link| link.attr("href"))
+        .filter_map(|href| base_url.join(href.as_ref()).ok())
+        .filter(|url| validate_favicon_url(url).is_ok())
+        .take(MAX_FAVICON_CANDIDATES)
+        .collect()
+}
+
+fn favicon_resource_data_url(bytes: &[u8]) -> Result<String, String> {
+    if sniff_image_media_type(bytes).is_some() {
+        return image_data_url(bytes);
+    }
+    let png = rasterize_svg_favicon(bytes)?;
+    image_data_url(&png)
+}
+
+fn rasterize_svg_favicon(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    if bytes.is_empty() || bytes.len() > MAX_QI_ICON_BYTES {
+        return Err("SVG favicon exceeds the supported size.".into());
+    }
+    let result = std::panic::catch_unwind(|| {
+        let options = resvg::usvg::Options {
+            image_href_resolver: resvg::usvg::ImageHrefResolver {
+                resolve_data: Box::new(|_, _, _| None),
+                resolve_string: Box::new(|_, _| None),
+            },
+            ..Default::default()
+        };
+        let tree = resvg::usvg::Tree::from_data(bytes, &options)
+            .map_err(|_| "The website favicon is not a valid SVG image.".to_string())?;
+        let size = tree.size();
+        let scale = (RASTERIZED_FAVICON_SIZE as f32 / size.width())
+            .min(RASTERIZED_FAVICON_SIZE as f32 / size.height());
+        let translate_x = (RASTERIZED_FAVICON_SIZE as f32 - size.width() * scale) / 2.0;
+        let translate_y = (RASTERIZED_FAVICON_SIZE as f32 - size.height() * scale) / 2.0;
+        let transform =
+            resvg::tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, translate_x, translate_y);
+        let mut pixmap = resvg::tiny_skia::Pixmap::new(RASTERIZED_FAVICON_SIZE, RASTERIZED_FAVICON_SIZE)
+            .ok_or_else(|| "Could not allocate the SVG favicon canvas.".to_string())?;
+        resvg::render(&tree, transform, &mut pixmap.as_mut());
+        pixmap
+            .encode_png()
+            .map_err(|_| "Could not encode the SVG favicon as PNG.".to_string())
+    });
+    result.map_err(|_| "The website SVG favicon could not be rendered safely.".to_string())?
 }
 
 fn validate_favicon_url(url: &reqwest::Url) -> Result<(), String> {
@@ -2024,22 +2204,25 @@ mod tests {
     }
 
     #[test]
-    fn opener_capability_allows_only_http_and_https() {
+    fn website_launcher_is_app_scoped_instead_of_exposing_the_opener_plugin() {
         let capability: serde_json::Value =
             serde_json::from_str(include_str!("../capabilities/main.json")).expect("capability JSON");
-        let permission = capability["permissions"]
-            .as_array()
-            .expect("permissions")
+        let permissions = capability["permissions"].as_array().expect("permissions");
+        assert!(permissions
             .iter()
-            .find(|permission| permission["identifier"] == "opener:allow-open-url")
-            .expect("scoped opener permission");
-        let urls = permission["allow"]
-            .as_array()
-            .expect("allow scopes")
+            .any(|permission| permission == "allow-launch-website"));
+        assert!(!permissions
             .iter()
-            .map(|scope| scope["url"].as_str().expect("URL scope"))
-            .collect::<HashSet<_>>();
-        assert_eq!(urls, HashSet::from(["http://*", "https://*"]));
+            .any(|permission| { permission["identifier"] == "opener:allow-open-url" }));
+    }
+
+    #[test]
+    fn website_launcher_rejects_non_web_urls() {
+        assert!(parse_website_url("https://example.com/path").is_ok());
+        assert!(parse_website_url("http://localhost.test").is_ok());
+        assert!(parse_website_url("file:///tmp/secret").is_err());
+        assert!(parse_website_url("javascript:alert(1)").is_err());
+        assert!(parse_website_url("https://").is_err());
     }
 
     #[test]
@@ -2100,6 +2283,45 @@ mod tests {
     fn favicon_import_accepts_supported_magic_bytes() {
         let data_url = image_data_url(b"\x89PNG\r\n\x1a\nmock").expect("PNG");
         assert!(data_url.starts_with("data:image/png;base64,"));
+    }
+
+    #[test]
+    fn favicon_import_discovers_declared_icon_urls() {
+        let base = reqwest::Url::parse("https://auth.example.test/log-in").expect("base URL");
+        let html = br#"
+            <html><head>
+              <link rel="stylesheet" href="/ignored.css">
+              <link rel="icon" type="image/svg+xml" href="https://cdn.example.test/icon.svg">
+              <link rel="apple-touch-icon" href="/touch.png">
+              <link rel="icon" href="data:image/png;base64,AAAA">
+            </head></html>
+        "#;
+
+        let urls = discover_favicon_urls(&base, html);
+        assert_eq!(
+            urls.iter().map(reqwest::Url::as_str).collect::<Vec<_>>(),
+            [
+                "https://cdn.example.test/icon.svg",
+                "https://auth.example.test/touch.png"
+            ]
+        );
+    }
+
+    #[test]
+    fn favicon_import_sends_only_the_site_origin_as_referrer() {
+        let page =
+            reqwest::Url::parse("https://example.test/private/path?token=secret#fragment").expect("page URL");
+        assert_eq!(favicon_referrer_origin(&page).as_str(), "https://example.test/");
+    }
+
+    #[test]
+    fn favicon_import_rasterizes_svg_without_storing_svg() {
+        let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+            <rect width="32" height="32" fill="#10a37f"/>
+        </svg>"##;
+        let data_url = favicon_resource_data_url(svg).expect("SVG favicon");
+        assert!(data_url.starts_with("data:image/png;base64,"));
+        assert!(!data_url.contains("svg+xml"));
     }
 
     #[test]

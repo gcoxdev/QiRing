@@ -26,6 +26,7 @@ const COMMANDS: &[&str] = &[
     "choose_backup_directory",
     "select_item_icon_dialog",
     "fetch_favicon",
+    "launch_website",
     "export_backup_dialog",
     "select_backup_file",
     "preview_selected_backup",

@@ -1,8 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { openUrl as openExternalUrl } from "@tauri-apps/plugin-opener";
 
-export const COMMAND_VERSION = "7";
+export const COMMAND_VERSION = "8";
 
 export const vaultApi = Object.freeze({
   exists: () => invoke("vault_exists"),
@@ -58,5 +57,5 @@ export const vaultApi = Object.freeze({
   restoreSnapshot: (path) => invoke("restore_snapshot", { path }),
 
   copySecret: (value) => invoke("copy_secret", { value }),
-  openUrl: (url) => openExternalUrl(url)
+  openUrl: (url) => invoke("launch_website", { url })
 });

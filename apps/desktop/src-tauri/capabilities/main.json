@@ -33,6 +33,7 @@
     "allow-choose-backup-directory",
     "allow-select-item-icon-dialog",
     "allow-fetch-favicon",
+    "allow-launch-website",
     "allow-export-backup-dialog",
     "allow-select-backup-file",
     "allow-preview-selected-backup",
@@ -47,13 +48,6 @@
     "allow-rotate-master-password",
     "allow-get-security-status",
     "allow-vault-exists",
-    "allow-copy-secret",
-    {
-      "identifier": "opener:allow-open-url",
-      "allow": [
-        { "url": "https://*" },
-        { "url": "http://*" }
-      ]
-    }
+    "allow-copy-secret"
   ]
 }

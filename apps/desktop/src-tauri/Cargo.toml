@@ -28,8 +28,11 @@ uuid.workspace = true
 zeroize.workspace = true
 qiring-core = { path = "../../../crates/qiring-core" }
 qiring-storage = { path = "../../../crates/qiring-storage" }
+dom_query = { version = "0.27.0", default-features = false }
+resvg = { version = "0.48.1", default-features = false }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+gio = "0.18.4"
 gtk = "0.18.2"
 webkit2gtk = "2.0.2"
 
