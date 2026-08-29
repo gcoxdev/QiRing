@@ -28,7 +28,7 @@ uuid.workspace = true
 zeroize.workspace = true
 qiring-core = { path = "../../../crates/qiring-core" }
 qiring-storage = { path = "../../../crates/qiring-storage" }
-dom_query = { version = "0.27.0", default-features = false }
+dom_query = { version = "0.28.0", default-features = false }
 quick-xml = "0.41.0"
 resvg = { version = "0.48.1", default-features = false }
 
