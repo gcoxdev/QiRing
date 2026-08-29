@@ -169,6 +169,9 @@ pub fn decrypt_legacy_vault_payload(vault_blob: &CipherBlob, dek: &[u8; KEY_LEN]
 pub fn save_encrypted_vault(path: &Path, vault: &EncryptedVault) -> anyhow::Result<()> {
     vault.metadata.validate()?;
     let json = serde_json::to_vec_pretty(vault).context("failed to serialize Ring")?;
+    if json.len() as u64 > MAX_VAULT_FILE_BYTES {
+        return Err(StorageError::TooLarge.into());
+    }
     save_bytes_atomic(path, &json)
 }
 
@@ -432,6 +435,21 @@ mod tests {
     fn rejects_oversized_vault_before_parsing() {
         let bytes = vec![b'x'; (MAX_VAULT_FILE_BYTES + 1) as usize];
         assert!(parse_vault_bytes(&bytes).is_err());
+    }
+
+    #[test]
+    fn refuses_to_save_a_vault_that_cannot_be_loaded() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("vault.qiring");
+        let mut vault = sample_vault();
+        // Pretty-printed byte arrays require several output bytes per input byte.
+        vault.vault_blob.ciphertext = vec![10; (MAX_VAULT_FILE_BYTES / 4) as usize];
+
+        let error = save_encrypted_vault(&path, &vault).expect_err("oversized save");
+        assert!(error
+            .downcast_ref::<StorageError>()
+            .is_some_and(|error| matches!(error, StorageError::TooLarge)));
+        assert!(!path.exists());
     }
 
     #[test]
