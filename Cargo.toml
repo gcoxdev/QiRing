@@ -18,7 +18,7 @@ authors = ["QiRing Contributors"]
 anyhow = "1.0.104"
 argon2 = "0.5"
 atomic-write-file = "0.3"
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", features = ["serde"] }
 chacha20poly1305 = { version = "0.10", features = ["std"] }
 data-encoding = "2"
