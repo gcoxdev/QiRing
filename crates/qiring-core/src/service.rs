@@ -1508,6 +1508,28 @@ mod tests {
             service.get_item(item_id).expect("get").icon_data_url.as_deref(),
             Some("data:image/png;base64,iVBORw0KGgo=")
         );
+
+        service
+            .update_item(
+                item_id,
+                ItemPatch {
+                    icon_data_url: Some(None),
+                    ..Default::default()
+                },
+            )
+            .expect("remove icon");
+        service.lock_vault();
+        service.unlock_vault_master(MASTER).expect("reopen without icon");
+        assert!(service
+            .get_item(item_id)
+            .expect("get without icon")
+            .icon_data_url
+            .is_none());
+        assert!(service
+            .list_items(ListFilter::default())
+            .expect("list without icon")
+            .first()
+            .is_some_and(|item| item.icon_data_url.is_none()));
     }
 
     #[test]

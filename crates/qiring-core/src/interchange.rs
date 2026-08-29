@@ -10,6 +10,9 @@ const MAX_CSV_BYTES: usize = 32 * 1024 * 1024;
 const MAX_CSV_ROWS: usize = 100_000;
 const MAX_CSV_COLUMNS: usize = 128;
 const MAX_CSV_CELL_BYTES: usize = 512 * 1024;
+// Do not allow repeated headers to expand imported notes beyond the maximum
+// size of the CSV source itself.
+const MAX_CSV_IMPORT_NOTES_BYTES: usize = MAX_CSV_BYTES;
 const FORMAT_VERSION: &str = "1";
 
 const HEADERS: [&str; 12] = [
@@ -135,6 +138,7 @@ pub(crate) fn import_inputs_from_csv(
         .iter()
         .position(|header| header == "qiring_format_version");
     let mut inputs = Vec::with_capacity(table.len() - 1);
+    let mut total_notes_bytes = 0usize;
 
     for (offset, row) in table.iter().skip(1).enumerate() {
         let row_number = offset + 2;
@@ -201,6 +205,15 @@ pub(crate) fn import_inputs_from_csv(
             totp_secret: optional(decode(indices.totp_secret)),
         };
         validate_item_input(&input).map_err(|error| anyhow::anyhow!("CSV row {row_number}: {error}"))?;
+        total_notes_bytes = total_notes_bytes
+            .checked_add(input.notes.as_ref().map_or(0, String::len))
+            .ok_or_else(|| CoreError::InvalidInput("CSV import exceeds the aggregate Notes limit".into()))?;
+        if total_notes_bytes > MAX_CSV_IMPORT_NOTES_BYTES {
+            return Err(CoreError::InvalidInput(format!(
+                "CSV row {row_number}: import exceeds the 32 MiB aggregate Notes limit"
+            ))
+            .into());
+        }
         inputs.push(input);
     }
 
@@ -609,6 +622,23 @@ mod tests {
             inputs[0].notes.as_deref(),
             Some("Imported fields:\nFavorite color: green")
         );
+    }
+
+    #[test]
+    fn mapped_import_limits_aggregate_notes_expansion() {
+        let header = "H".repeat(95_000);
+        let mut payload = format!("Name,{header}\n");
+        for index in 0..354 {
+            payload.push_str(&format!("item-{index},x\n"));
+        }
+        let preview = preview_csv_bytes(payload.as_bytes()).expect("preview");
+        let mut mapping = preview.suggested_mapping;
+        mapping.include_unmapped_in_notes = true;
+
+        let error = import_inputs_from_csv(payload.as_bytes(), &mapping).expect_err("aggregate limit");
+        assert!(error
+            .to_string()
+            .contains("import exceeds the 32 MiB aggregate Notes limit"));
     }
 
     #[test]

@@ -136,6 +136,8 @@ struct SelectedBackup {
 
 const MAX_QI_ICON_BYTES: usize = 512 * 1024;
 const MAX_FAVICON_CANDIDATES: usize = 8;
+const MAX_SVG_ELEMENTS: usize = 4_096;
+const MAX_SVG_NESTING_DEPTH: usize = 64;
 const RASTERIZED_FAVICON_SIZE: u32 = 128;
 const FAVICON_BROWSER_USER_AGENT: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
@@ -1168,6 +1170,7 @@ fn rasterize_svg_favicon(bytes: &[u8]) -> Result<Vec<u8>, String> {
     if bytes.is_empty() || bytes.len() > MAX_QI_ICON_BYTES {
         return Err("SVG favicon exceeds the supported size.".into());
     }
+    validate_svg_complexity(bytes)?;
     let result = std::panic::catch_unwind(|| {
         let options = resvg::usvg::Options {
             image_href_resolver: resvg::usvg::ImageHrefResolver {
@@ -1193,6 +1196,35 @@ fn rasterize_svg_favicon(bytes: &[u8]) -> Result<Vec<u8>, String> {
             .map_err(|_| "Could not encode the SVG favicon as PNG.".to_string())
     });
     result.map_err(|_| "The website SVG favicon could not be rendered safely.".to_string())?
+}
+
+fn validate_svg_complexity(bytes: &[u8]) -> Result<(), String> {
+    use quick_xml::events::Event;
+
+    let mut reader = quick_xml::Reader::from_reader(bytes);
+    let mut depth = 0usize;
+    let mut elements = 0usize;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(_)) => {
+                depth = depth.saturating_add(1);
+                elements = elements.saturating_add(1);
+                if depth > MAX_SVG_NESTING_DEPTH || elements > MAX_SVG_ELEMENTS {
+                    return Err("The website SVG favicon is too complex.".into());
+                }
+            }
+            Ok(Event::Empty(_)) => {
+                elements = elements.saturating_add(1);
+                if elements > MAX_SVG_ELEMENTS {
+                    return Err("The website SVG favicon is too complex.".into());
+                }
+            }
+            Ok(Event::End(_)) => depth = depth.saturating_sub(1),
+            Ok(Event::Eof) => return Ok(()),
+            Err(_) => return Err("The website favicon is not a valid SVG image.".into()),
+            _ => {}
+        }
+    }
 }
 
 fn validate_favicon_url(url: &reqwest::Url) -> Result<(), String> {
@@ -1255,16 +1287,22 @@ fn is_public_ipv4(ip: Ipv4Addr) -> bool {
 }
 
 fn is_public_ipv6(ip: Ipv6Addr) -> bool {
-    if let Some(mapped) = ip.to_ipv4_mapped() {
-        return is_public_ipv4(mapped);
-    }
-    let segments = ip.segments();
-    !(ip.is_loopback()
-        || ip.is_unspecified()
-        || ip.is_multicast()
-        || (segments[0] & 0xfe00) == 0xfc00
-        || (segments[0] & 0xffc0) == 0xfe80
-        || (segments[0] == 0x2001 && segments[1] == 0x0db8))
+    let address = u128::from(ip);
+    let in_prefix = |network: Ipv6Addr, prefix_length: u32| {
+        let mask = u128::MAX << (128 - prefix_length);
+        address & mask == u128::from(network) & mask
+    };
+
+    // Publicly routable IPv6 unicast space is currently allocated from 2000::/3.
+    // Exclude every IANA special-purpose block within that allocation as well;
+    // in particular, translation and tunnelling prefixes must never be allowed
+    // to turn a native favicon request into an IPv4 SSRF request.
+    in_prefix(Ipv6Addr::new(0x2000, 0, 0, 0, 0, 0, 0, 0), 3)
+        && !in_prefix(Ipv6Addr::new(0x2001, 0, 0, 0, 0, 0, 0, 0), 23)
+        && !in_prefix(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 0), 32)
+        && !in_prefix(Ipv6Addr::new(0x2002, 0, 0, 0, 0, 0, 0, 0), 16)
+        && !in_prefix(Ipv6Addr::new(0x2620, 0x004f, 0x8000, 0, 0, 0, 0, 0), 48)
+        && !in_prefix(Ipv6Addr::new(0x3fff, 0, 0, 0, 0, 0, 0, 0), 20)
 }
 
 fn restore_window_bounds(window: &tauri::WebviewWindow, guard: &WindowBoundsGuard) -> bool {
@@ -2280,6 +2318,26 @@ mod tests {
     }
 
     #[test]
+    fn favicon_import_rejects_special_purpose_ipv6_ranges() {
+        for address in [
+            "64:ff9b::a9fe:a9fe",   // NAT64 well-known prefix
+            "64:ff9b:1::a9fe:a9fe", // NAT64 local-use prefix
+            "::ffff:0:a9fe:a9fe",   // IPv4-translatable
+            "2002:a9fe:a9fe::",     // 6to4
+            "fec0::1234",           // deprecated site-local
+            "2001:db8::1",          // documentation
+            "3fff::1",              // documentation
+        ] {
+            let address = address.parse::<Ipv6Addr>().expect("valid test address");
+            assert!(!is_public_ipv6(address), "accepted {address}");
+        }
+
+        assert!(is_public_ipv6(
+            "2606:2800:220:1:248:1893:25c8:1946".parse().unwrap()
+        ));
+    }
+
+    #[test]
     fn favicon_import_accepts_supported_magic_bytes() {
         let data_url = image_data_url(b"\x89PNG\r\n\x1a\nmock").expect("PNG");
         assert!(data_url.starts_with("data:image/png;base64,"));
@@ -2322,6 +2380,38 @@ mod tests {
         let data_url = favicon_resource_data_url(svg).expect("SVG favicon");
         assert!(data_url.starts_with("data:image/png;base64,"));
         assert!(!data_url.contains("svg+xml"));
+    }
+
+    #[test]
+    fn favicon_import_rejects_deeply_nested_svg_before_rendering() {
+        let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg">"#);
+        for _ in 0..MAX_SVG_NESTING_DEPTH {
+            svg.push_str("<g>");
+        }
+        svg.push_str(r#"<rect width="1" height="1"/>"#);
+        for _ in 0..MAX_SVG_NESTING_DEPTH {
+            svg.push_str("</g>");
+        }
+        svg.push_str("</svg>");
+
+        assert_eq!(
+            rasterize_svg_favicon(svg.as_bytes()).expect_err("reject deeply nested SVG"),
+            "The website SVG favicon is too complex."
+        );
+    }
+
+    #[test]
+    fn favicon_import_rejects_excessive_svg_elements_before_rendering() {
+        let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg">"#);
+        for _ in 0..MAX_SVG_ELEMENTS {
+            svg.push_str("<g/>");
+        }
+        svg.push_str("</svg>");
+
+        assert_eq!(
+            rasterize_svg_favicon(svg.as_bytes()).expect_err("reject SVG with too many elements"),
+            "The website SVG favicon is too complex."
+        );
     }
 
     #[test]

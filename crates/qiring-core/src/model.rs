@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use qiring_crypto::{CipherBlob, KdfParams};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -327,16 +327,31 @@ pub struct ItemInput {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ItemPatch {
     pub title: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_nullable_patch")]
     pub username: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_patch")]
     pub password: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_patch")]
     pub url: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_patch")]
     pub notes: Option<Option<String>>,
     pub tags: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_patch")]
     pub folder: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_patch")]
     pub icon_data_url: Option<Option<String>>,
     pub security_questions: Option<Vec<SecurityQuestion>>,
     pub custom_fields: Option<Vec<CustomField>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_patch")]
     pub totp_secret: Option<Option<String>>,
+}
+
+fn deserialize_nullable_patch<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -496,4 +511,43 @@ pub enum CoreError {
     VaultAlreadyExists,
     #[error("no deleted item is available to restore")]
     NothingToUndo,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ItemPatch;
+
+    #[test]
+    fn nullable_item_patch_distinguishes_omitted_clear_and_replace() {
+        let omitted: ItemPatch = serde_json::from_str("{}").expect("deserialize omitted patch");
+        assert!(omitted.icon_data_url.is_none());
+
+        let cleared: ItemPatch = serde_json::from_str(
+            r#"{
+                "username": null,
+                "password": null,
+                "url": null,
+                "notes": null,
+                "folder": null,
+                "icon_data_url": null,
+                "totp_secret": null
+            }"#,
+        )
+        .expect("deserialize clear patch");
+        assert!(matches!(cleared.username, Some(None)));
+        assert!(matches!(cleared.password, Some(None)));
+        assert!(matches!(cleared.url, Some(None)));
+        assert!(matches!(cleared.notes, Some(None)));
+        assert!(matches!(cleared.folder, Some(None)));
+        assert!(matches!(cleared.icon_data_url, Some(None)));
+        assert!(matches!(cleared.totp_secret, Some(None)));
+
+        let replaced: ItemPatch =
+            serde_json::from_str(r#"{"icon_data_url":"data:image/png;base64,iVBORw0KGgo="}"#)
+                .expect("deserialize replacement patch");
+        assert_eq!(
+            replaced.icon_data_url.flatten().as_deref(),
+            Some("data:image/png;base64,iVBORw0KGgo=")
+        );
+    }
 }
