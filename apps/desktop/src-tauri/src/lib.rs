@@ -1255,16 +1255,22 @@ fn is_public_ipv4(ip: Ipv4Addr) -> bool {
 }
 
 fn is_public_ipv6(ip: Ipv6Addr) -> bool {
-    if let Some(mapped) = ip.to_ipv4_mapped() {
-        return is_public_ipv4(mapped);
-    }
-    let segments = ip.segments();
-    !(ip.is_loopback()
-        || ip.is_unspecified()
-        || ip.is_multicast()
-        || (segments[0] & 0xfe00) == 0xfc00
-        || (segments[0] & 0xffc0) == 0xfe80
-        || (segments[0] == 0x2001 && segments[1] == 0x0db8))
+    let address = u128::from(ip);
+    let in_prefix = |network: Ipv6Addr, prefix_length: u32| {
+        let mask = u128::MAX << (128 - prefix_length);
+        address & mask == u128::from(network) & mask
+    };
+
+    // Publicly routable IPv6 unicast space is currently allocated from 2000::/3.
+    // Exclude every IANA special-purpose block within that allocation as well;
+    // in particular, translation and tunnelling prefixes must never be allowed
+    // to turn a native favicon request into an IPv4 SSRF request.
+    in_prefix(Ipv6Addr::new(0x2000, 0, 0, 0, 0, 0, 0, 0), 3)
+        && !in_prefix(Ipv6Addr::new(0x2001, 0, 0, 0, 0, 0, 0, 0), 23)
+        && !in_prefix(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 0), 32)
+        && !in_prefix(Ipv6Addr::new(0x2002, 0, 0, 0, 0, 0, 0, 0), 16)
+        && !in_prefix(Ipv6Addr::new(0x2620, 0x004f, 0x8000, 0, 0, 0, 0, 0), 48)
+        && !in_prefix(Ipv6Addr::new(0x3fff, 0, 0, 0, 0, 0, 0, 0), 20)
 }
 
 fn restore_window_bounds(window: &tauri::WebviewWindow, guard: &WindowBoundsGuard) -> bool {
@@ -2277,6 +2283,26 @@ mod tests {
         }
         assert!(is_public_ip(IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34))));
         assert!(image_data_url(b"not an image").is_err());
+    }
+
+    #[test]
+    fn favicon_import_rejects_special_purpose_ipv6_ranges() {
+        for address in [
+            "64:ff9b::a9fe:a9fe",   // NAT64 well-known prefix
+            "64:ff9b:1::a9fe:a9fe", // NAT64 local-use prefix
+            "::ffff:0:a9fe:a9fe",   // IPv4-translatable
+            "2002:a9fe:a9fe::",     // 6to4
+            "fec0::1234",           // deprecated site-local
+            "2001:db8::1",          // documentation
+            "3fff::1",              // documentation
+        ] {
+            let address = address.parse::<Ipv6Addr>().expect("valid test address");
+            assert!(!is_public_ipv6(address), "accepted {address}");
+        }
+
+        assert!(is_public_ipv6(
+            "2606:2800:220:1:248:1893:25c8:1946".parse().unwrap()
+        ));
     }
 
     #[test]
