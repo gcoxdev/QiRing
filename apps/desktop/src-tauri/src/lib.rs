@@ -136,6 +136,8 @@ struct SelectedBackup {
 
 const MAX_QI_ICON_BYTES: usize = 512 * 1024;
 const MAX_FAVICON_CANDIDATES: usize = 8;
+const MAX_SVG_ELEMENTS: usize = 4_096;
+const MAX_SVG_NESTING_DEPTH: usize = 64;
 const RASTERIZED_FAVICON_SIZE: u32 = 128;
 const FAVICON_BROWSER_USER_AGENT: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
@@ -1168,6 +1170,7 @@ fn rasterize_svg_favicon(bytes: &[u8]) -> Result<Vec<u8>, String> {
     if bytes.is_empty() || bytes.len() > MAX_QI_ICON_BYTES {
         return Err("SVG favicon exceeds the supported size.".into());
     }
+    validate_svg_complexity(bytes)?;
     let result = std::panic::catch_unwind(|| {
         let options = resvg::usvg::Options {
             image_href_resolver: resvg::usvg::ImageHrefResolver {
@@ -1193,6 +1196,35 @@ fn rasterize_svg_favicon(bytes: &[u8]) -> Result<Vec<u8>, String> {
             .map_err(|_| "Could not encode the SVG favicon as PNG.".to_string())
     });
     result.map_err(|_| "The website SVG favicon could not be rendered safely.".to_string())?
+}
+
+fn validate_svg_complexity(bytes: &[u8]) -> Result<(), String> {
+    use quick_xml::events::Event;
+
+    let mut reader = quick_xml::Reader::from_reader(bytes);
+    let mut depth = 0usize;
+    let mut elements = 0usize;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(_)) => {
+                depth = depth.saturating_add(1);
+                elements = elements.saturating_add(1);
+                if depth > MAX_SVG_NESTING_DEPTH || elements > MAX_SVG_ELEMENTS {
+                    return Err("The website SVG favicon is too complex.".into());
+                }
+            }
+            Ok(Event::Empty(_)) => {
+                elements = elements.saturating_add(1);
+                if elements > MAX_SVG_ELEMENTS {
+                    return Err("The website SVG favicon is too complex.".into());
+                }
+            }
+            Ok(Event::End(_)) => depth = depth.saturating_sub(1),
+            Ok(Event::Eof) => return Ok(()),
+            Err(_) => return Err("The website favicon is not a valid SVG image.".into()),
+            _ => {}
+        }
+    }
 }
 
 fn validate_favicon_url(url: &reqwest::Url) -> Result<(), String> {
@@ -2322,6 +2354,24 @@ mod tests {
         let data_url = favicon_resource_data_url(svg).expect("SVG favicon");
         assert!(data_url.starts_with("data:image/png;base64,"));
         assert!(!data_url.contains("svg+xml"));
+    }
+
+    #[test]
+    fn favicon_import_rejects_deeply_nested_svg_before_rendering() {
+        let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg">"#);
+        for _ in 0..MAX_SVG_NESTING_DEPTH {
+            svg.push_str("<g>");
+        }
+        svg.push_str(r#"<rect width="1" height="1"/>"#);
+        for _ in 0..MAX_SVG_NESTING_DEPTH {
+            svg.push_str("</g>");
+        }
+        svg.push_str("</svg>");
+
+        assert_eq!(
+            rasterize_svg_favicon(svg.as_bytes()).as_deref(),
+            Err("The website SVG favicon is too complex.")
+        );
     }
 
     #[test]
