@@ -33,7 +33,7 @@ quick-xml = "0.41.0"
 resvg = { version = "0.48.1", default-features = false }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-gio = "0.18.4"
+gio = "0.22.9"
 gtk = "0.18.2"
 webkit2gtk = "2.0.2"
 
