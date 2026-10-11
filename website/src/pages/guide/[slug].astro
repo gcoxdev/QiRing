@@ -1,0 +1,19 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import topics from '../../data/help.json';
+import { guideDescriptions } from '../../data/site.js';
+export function getStaticPaths() { return topics.map((topic,index) => ({ params: { slug: topic.slug }, props: { topic,index } })); }
+const { topic,index } = Astro.props;
+const previous = topics[index-1];
+const next = topics[index+1];
+---
+<Layout title={topic.title} description={guideDescriptions[topic.slug]}>
+  <div class="shell guide-layout">
+    <aside class="guide-sidebar"><a href="/guide/" class="eyebrow">← All guide topics</a><nav aria-label="Guide topics">{topics.map((entry,i) => <a href={`/guide/${entry.slug}/`} aria-current={entry.slug === topic.slug ? 'page' : undefined}><span>{String(i+1).padStart(2,'0')}</span>{entry.title}</a>)}</nav><a class="sidebar-extra" href="/downloads/#installation">Installation notes ↗</a></aside>
+    <article class="guide-article"><header><p class="eyebrow">The QiRing user guide / {String(index+1).padStart(2,'0')}</p><h1>{topic.title}</h1><p class="lede">{guideDescriptions[topic.slug]}</p><p class="source-note">Mirrors the app’s built-in Help. Keyboard labels show both Windows/Linux and macOS modifiers.</p></header><div class="prose" set:html={topic.html} />
+      {topic.slug === 'getting-started' && <aside class="callout"><h2>Before you begin</h2><p>QiRing is prerelease software. Explore with test data first and keep independent backups. For installation, start with the <a href="/downloads/">download guide</a>.</p><p>“Local-only” describes your Ring and its processing. Opening websites and explicitly fetching favicons can use the network. Read the <a href="/security/">security and privacy notes</a>.</p></aside>}
+      {topic.slug === 'backups' && <aside class="callout"><h2>Encrypted backup or CSV?</h2><p>Use an encrypted backup to preserve a protected copy of your Ring. CSV is a plaintext transfer format: it contains readable secrets, excludes icons and password history, and needs careful storage and cleanup.</p></aside>}
+      <nav class="article-pagination" aria-label="Adjacent guide topics">{previous ? <a href={`/guide/${previous.slug}/`}><span>← Previous</span><strong>{previous.title}</strong></a> : <a href="/guide/"><span>← Guide home</span><strong>All topics</strong></a>}{next ? <a href={`/guide/${next.slug}/`}><span>Next →</span><strong>{next.title}</strong></a> : <a href="/downloads/"><span>Ready to try it? →</span><strong>Download QiRing</strong></a>}</nav>
+    </article>
+  </div>
+</Layout>

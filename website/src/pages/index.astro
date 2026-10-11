@@ -1,0 +1,42 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Screenshot from '../components/Screenshot.astro';
+import release from '../data/release.json';
+---
+<Layout>
+  <section class="hero shell">
+    <div class="hero-copy">
+      <a class="release-pill" href="/downloads/"><span class="status-dot"></span>{release.tag} · {release.prerelease ? 'Early access' : 'Available now'} <span aria-hidden="true">↗</span></a>
+      <h1>Your passwords.<br />Your device.<br /><em>Your Ring.</em></h1>
+      <p class="hero-lede">A quieter way to keep your digital life together. Passwords, two-factor codes, and private notes, in one encrypted home on your computer.</p>
+      <div class="actions"><a class="button" href="/downloads/">Download QiRing <span aria-hidden="true">↓</span></a><a class="text-link" href="/guide/getting-started/">Take a look around <span aria-hidden="true">↗</span></a></div>
+      <p class="platform-line">Linux <span>·</span> Windows <span>·</span> macOS <span class="platform-divider">/</span> Free & open source</p>
+    </div>
+    <div class="hero-product">
+      <div class="product-label"><span class="eyebrow">A place for every little secret</span><span aria-hidden="true">↙</span></div>
+      <Screenshot name="ring" alt="QiRing's Ring workspace with fictional Juniper Mail and other demo entries" caption="The Ring. Everything in its place." eager />
+      <div class="local-note"><span class="note-icon" aria-hidden="true">⌂</span><div><strong>Right where you left it.</strong><span>Your Ring lives on your device.</span></div></div>
+    </div>
+  </section>
+  <section class="principles shell" aria-label="QiRing principles">
+    <div><span class="mini-number">01 / LOCAL</span><h2>No account to create.</h2><p>Start with a master password. Your encrypted Ring stays on your computer.</p></div>
+    <div><span class="mini-number">02 / OFFLINE</span><h2>Ready without a connection.</h2><p>Open your Ring, generate passwords, and check their health offline.</p></div>
+    <div><span class="mini-number">03 / OPEN</span><h2>Nothing behind a curtain.</h2><p>Read the source, follow development, and understand how your data is handled.</p></div>
+  </section>
+  <section class="section shell">
+    <div class="section-heading"><div><p class="eyebrow">A little less scattered</p><h2>More than a list<br />of passwords.</h2></div><p>A saved entry is a <strong>Qi</strong>. Your encrypted collection is a <strong>Ring</strong>. A few simple ideas to bring the important things together.</p></div>
+    <div class="feature-editorial">
+      <article><span class="feature-symbol" aria-hidden="true">⊞</span><h3>Keep the whole story.</h3><p>Logins, secure notes, tags, custom fields, security questions, and password history belong together.</p><a class="text-link" href="/guide/vault/">Explore the Qi editor ↗</a></article>
+      <article><span class="feature-symbol" aria-hidden="true">✳</span><h3>Make strong your default.</h3><p>Save password profiles with your own length and character rules. Generate a fresh password when you need one.</p><a class="text-link" href="/guide/profiles/">Meet password profiles ↗</a></article>
+      <article><span class="feature-symbol" aria-hidden="true">↺</span><h3>Keep a way back.</h3><p>Save your recovery key, make encrypted backups, and use local snapshots to protect against mistakes.</p><a class="text-link" href="/guide/backups/">Plan your backups ↗</a></article>
+    </div>
+  </section>
+  <section class="dark-section">
+    <div class="shell privacy-section"><div><p class="eyebrow">Local by design</p><h2>Your vault doesn’t<br />need a cloud.</h2><p>QiRing has no cloud-sync backend, online account, or app telemetry. Encryption and password-health checks happen on your device.</p><a class="button button-light" href="/security/">Understand the security model <span aria-hidden="true">↗</span></a></div><div class="privacy-diagram" aria-label="Your master password unlocks your encrypted Ring locally on your device"><div class="diagram-title"><span class="status-dot"></span> YOUR DEVICE</div><div class="diagram-key">Your master password</div><div class="diagram-path" aria-hidden="true">↓</div><div class="diagram-ring"><img src="/qiring-mark.svg" alt="" width="64" height="64" /><div><strong>Your encrypted Ring</strong><span>Logins · notes · profiles</span></div></div><p>You choose your backup destination.</p></div></div>
+  </section>
+  <section class="section shell getting-started">
+    <div><p class="eyebrow">A considered first step</p><h2>Make yourself<br />at home.</h2><p>Getting started takes a few deliberate steps. The guide walks you through each one.</p><a class="text-link" href="/guide/">Open the user guide ↗</a></div>
+    <ol class="steps"><li><span>01</span><div><h3>Pick your platform.</h3><p>Choose an installer or a portable archive for your computer.</p></div></li><li><span>02</span><div><h3>Create your Ring.</h3><p>Set a master password and record your recovery key somewhere safe and separate.</p></div></li><li><span>03</span><div><h3>Bring your essentials.</h3><p>Add your first Qi, or preview and map a CSV import from another tool.</p></div></li></ol>
+  </section>
+  <section class="shell cta-panel"><div><p class="eyebrow">Small app. Important things.</p><h2>A Ring of your own.</h2><p>QiRing is in early development. Start with test data and keep independent backups.</p></div><a class="button" href="/downloads/">Get QiRing <span aria-hidden="true">↓</span></a></section>
+</Layout>

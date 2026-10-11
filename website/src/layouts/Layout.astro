@@ -1,0 +1,50 @@
+---
+import '../styles/global.css';
+import { repository, releases } from '../data/site.js';
+const { title = 'Your passwords. Your device.', description = 'QiRing is a local-only desktop password manager for Linux, Windows, and macOS. Organize logins, generate passwords, and keep your encrypted Ring on your device.' } = Astro.props;
+const pathname = Astro.url.pathname;
+const links = [['/features/', 'Explore QiRing'], ['/guide/', 'User guide'], ['/security/', 'Security']];
+const active = (path) => pathname.startsWith(path);
+const canonical = Astro.site ? new URL(pathname, Astro.site) : undefined;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#f6f7f1" />
+    <title>{title} — QiRing</title>
+    <link rel="icon" type="image/svg+xml" href="/qiring-mark.svg" />
+    <link rel="preload" href="/fonts/plex-sans.woff2" as="font" type="font/woff2" crossorigin />
+    {canonical && <link rel="canonical" href={canonical} />}
+    <meta property="og:title" content={`${title} — QiRing`} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    {canonical && <meta property="og:url" content={canonical} />}
+    {Astro.site && <meta property="og:image" content={new URL('/screenshots/ring.png', Astro.site)} />}
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="shell header-inner">
+        <a href="/" class="brand" aria-label="QiRing home"><img src="/qiring-mark.svg" alt="" width="36" height="36" />QiRing<span class="brand-dot">.</span></a>
+        <nav class="desktop-nav" aria-label="Main navigation">
+          {links.map(([href, label]) => <a href={href} aria-current={active(href) ? 'page' : undefined}>{label}</a>)}
+          <a target="_blank" rel="noopener noreferrer" href={repository} class="external">GitHub <span aria-hidden="true">↗</span></a>
+        </nav>
+        <a class="button button-small header-download" href="/downloads/">Get QiRing <span aria-hidden="true">↗</span></a>
+        <details class="mobile-menu"><summary>Menu <span aria-hidden="true">＋</span></summary><nav aria-label="Mobile navigation">{links.map(([href,label]) => <a href={href} aria-current={active(href) ? 'page' : undefined}>{label}</a>)}<a href="/downloads/">Downloads</a><a target="_blank" rel="noopener noreferrer" href={repository}>GitHub ↗</a></nav></details>
+      </div>
+    </header>
+    <main id="main"><slot /></main>
+    <footer class="site-footer">
+      <div class="shell footer-top">
+        <div><a href="/" class="brand"><img src="/qiring-mark.svg" alt="" width="36" height="36" />QiRing<span class="brand-dot">.</span></a><p>A small home for your digital life.<br />Built to stay with you.</p></div>
+        <nav aria-label="Footer product links"><span class="eyebrow">The app</span><a href="/features/">Features</a><a href="/downloads/">Downloads</a><a target="_blank" rel="noopener noreferrer" href={releases}>Release notes ↗</a></nav>
+        <nav aria-label="Footer resource links"><span class="eyebrow">Find your way</span><a href="/guide/">User guide</a><a href="/security/">Security & privacy</a><a target="_blank" rel="noopener noreferrer" href={`${repository}/issues`}>Report an issue ↗</a></nav>
+      </div>
+      <div class="shell footer-bottom"><span>Local data. Open source. Your Ring.</span><a target="_blank" rel="noopener noreferrer" href={`${repository}/blob/main/LICENSE`}>AGPL-3.0 license ↗</a><span>Made for Linux, Windows & macOS.</span></div>
+    </footer>
+  </body>
+</html>

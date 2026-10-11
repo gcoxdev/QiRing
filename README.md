@@ -65,6 +65,7 @@ Native bundles must be built on their corresponding operating system. GitHub Act
 - [Threat model](docs/threat-model.md)
 - [Future work](docs/future-work.md)
 - [Parser fuzzing](fuzz/README.md)
+- [Product website](website/README.md)
 
 ## Workspace
 
@@ -72,6 +73,7 @@ Native bundles must be built on their corresponding operating system. GitHub Act
 - `crates/qiring-core`: vault domain logic and policies
 - `crates/qiring-crypto`: cryptography and key hierarchy
 - `crates/qiring-storage`: encrypted persistence
+- `website`: standalone static product site, screenshots, and mirrored app Help
 
 ## License
 

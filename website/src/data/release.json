@@ -1,0 +1,69 @@
+{
+  "tag": "v0.1.3",
+  "prerelease": true,
+  "url": "https://github.com/gcoxdev/qiring/releases/tag/v0.1.3",
+  "publishedAt": "2026-10-07T07:28:10Z",
+  "signing": "unsigned",
+  "assets": [
+    {
+      "name": "linux-QiRing_0.1.3_amd64.AppImage",
+      "url": "https://github.com/gcoxdev/qiring/releases/download/v0.1.3/linux-QiRing_0.1.3_amd64.AppImage",
+      "size": 85137912
+    },
+    {
+      "name": "linux-QiRing_0.1.3_amd64.deb",
+      "url": "https://github.com/gcoxdev/qiring/releases/download/v0.1.3/linux-QiRing_0.1.3_amd64.deb",
+      "size": 6904894
+    },
+    {
+      "name": "linux-QiRing_0.1.3_amd64_portable.tar.gz",
+      "url": "https://github.com/gcoxdev/qiring/releases/download/v0.1.3/linux-QiRing_0.1.3_amd64_portable.tar.gz",
+      "size": 84487068
+    },
+    {
+      "name": "linux-SHA256SUMS",
+      "url": "https://github.com/gcoxdev/qiring/releases/download/v0.1.3/linux-SHA256SUMS",
+      "size": 391
+    },
+    {
+      "name": "macos-QiRing_0.1.3_aarch64.dmg",
+      "url": "https://github.com/gcoxdev/qiring/releases/download/v0.1.3/macos-QiRing_0.1.3_aarch64.dmg",
+      "size": 6127021
+    },
+    {
+      "name": "macos-SHA256SUMS",
+      "url": "https://github.com/gcoxdev/qiring/releases/download/v0.1.3/macos-SHA256SUMS",
+      "size": 186
+    },
+    {
+      "name": "qiring-linux.spdx.json",
+      "url": "https://github.com/gcoxdev/qiring/releases/download/v0.1.3/qiring-linux.spdx.json",
+      "size": 1980050
+    },
+    {
+      "name": "qiring-macos.spdx.json",
+      "url": "https://github.com/gcoxdev/qiring/releases/download/v0.1.3/qiring-macos.spdx.json",
+      "size": 3248142
+    },
+    {
+      "name": "qiring-windows.spdx.json",
+      "url": "https://github.com/gcoxdev/qiring/releases/download/v0.1.3/qiring-windows.spdx.json",
+      "size": 3327089
+    },
+    {
+      "name": "windows-QiRing_0.1.3_x64_en-US.msi",
+      "url": "https://github.com/gcoxdev/qiring/releases/download/v0.1.3/windows-QiRing_0.1.3_x64_en-US.msi",
+      "size": 5881856
+    },
+    {
+      "name": "windows-QiRing_0.1.3_x64_portable.zip",
+      "url": "https://github.com/gcoxdev/qiring/releases/download/v0.1.3/windows-QiRing_0.1.3_x64_portable.zip",
+      "size": 5579455
+    },
+    {
+      "name": "windows-SHA256SUMS",
+      "url": "https://github.com/gcoxdev/qiring/releases/download/v0.1.3/windows-SHA256SUMS",
+      "size": 296
+    }
+  ]
+}

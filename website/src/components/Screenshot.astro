@@ -1,0 +1,9 @@
+---
+const { name, alt, caption, eager = false } = Astro.props;
+---
+<figure class="app-figure">
+  <a class="app-image-link" href={`/screenshots/${name}.png`} target="_blank" rel="noopener" aria-label={`View full-size screenshot: ${alt}`}>
+    <img src={`/screenshots/${name}.png`} alt={alt} width="1280" height="860" loading={eager ? 'eager' : 'lazy'} decoding="async" />
+  </a>
+  <figcaption><span>{caption}</span><span>Fictional demo data · View full size ↗</span></figcaption>
+</figure>

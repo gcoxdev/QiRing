@@ -1,0 +1,26 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import topics from '../../data/help.json';
+import { guideDescriptions } from '../../data/site.js';
+---
+<Layout title="User guide" description="Learn QiRing, from creating your first Ring and recording a recovery key to password profiles, portable storage, backups, and keyboard shortcuts.">
+  <section class="shell page-intro guide-intro"><p class="eyebrow">A little guidance</p><h1>Get to know your Ring.</h1><p class="lede">The same Help you’ll find inside QiRing, with a little more room to explore. Start at the beginning or find what you need.</p><div class="search-control" data-search-control hidden><label for="guide-search">Find a topic</label><div class="search-input"><span aria-hidden="true">⌕</span><input id="guide-search" type="search" placeholder="Try “recovery”, “CSV”, or “shortcuts”…" autocomplete="off" /><button type="button" id="clear-search">Clear</button></div><p id="search-status" class="small" role="status" aria-live="polite">9 topics</p></div></section>
+  <section class="shell guide-grid" aria-label="Help topics">{topics.map((topic,index) => <a class="guide-card" href={`/guide/${topic.slug}/`} data-topic data-search={`${topic.title} ${guideDescriptions[topic.slug]} ${topic.html.replace(/<[^>]*>/g, ' ')}`.toLowerCase()}><span class="mini-number">{String(index+1).padStart(2,'0')} / GUIDE</span><h2>{topic.title}</h2><p>{guideDescriptions[topic.slug]}</p><span class="card-arrow" aria-hidden="true">↗</span></a>)}<p id="no-results" hidden>No matching topics. Try a broader term, or clear the search to see the whole guide.</p></section>
+  <aside class="shell guide-extra"><div><h2>Installing for the first time?</h2><p>Pick the right package and learn what to expect from an unsigned build.</p><a href="/downloads/#installation" class="text-link">Installation notes ↗</a></div><div><h2>Want to understand the boundaries?</h2><p>Read about local encryption, recovery, clipboard limits, and optional network requests.</p><a href="/security/" class="text-link">Security & privacy ↗</a></div></aside>
+  <script>
+    const input = document.querySelector<HTMLInputElement>('#guide-search');
+    const cards = [...document.querySelectorAll<HTMLElement>('[data-topic]')];
+    const status = document.querySelector('#search-status');
+    const empty = document.querySelector<HTMLElement>('#no-results');
+    document.querySelector<HTMLElement>('[data-search-control]')!.hidden = false;
+    function filter() {
+      const words = input!.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      let visible = 0;
+      cards.forEach(card => { card.hidden = !words.every(word => card.dataset.search!.includes(word)); if (!card.hidden) visible++; });
+      status!.textContent = `${visible} ${visible === 1 ? 'topic' : 'topics'}${words.length ? ' found' : ''}`;
+      empty!.hidden = visible > 0;
+    }
+    input?.addEventListener('input', filter);
+    document.querySelector('#clear-search')?.addEventListener('click', () => { input!.value = ''; filter(); input!.focus(); });
+  </script>
+</Layout>
